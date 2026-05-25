@@ -1,0 +1,18 @@
+defaults:
+  feed: rising
+  post_limit: 25
+  comment_limit: 5
+  comment_sort: best
+  include_comments: true
+  request_delay_seconds: 1.0
+
+# Edit this list freely; keep names without the r/ prefix.
+subreddits:
+  - name: AnimalRights
+    enabled: true
+  - name: vegan
+    enabled: true
+  - name: veganism
+    enabled: true
+  - name: animalwelfare
+    enabled: false
