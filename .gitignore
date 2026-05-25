@@ -162,6 +162,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Local config overrides
+config/pre_check.yaml
+
 # Spyder project settings
 .spyderproject
 .spyproject
