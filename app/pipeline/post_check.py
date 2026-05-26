@@ -4,21 +4,40 @@ from __future__ import annotations
 
 import logging
 import os
-import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 import yaml
 from supabase import Client, create_client
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_ADVOCACY_KEYWORDS = [
+	"animal",
+	"animals",
+	"animal rights",
+	"animal welfare",
+	"vegan",
+	"veganism",
+	"plant-based",
+	"factory farm",
+	"fur",
+	"sanctuary",
+	"rescue",
+	"adoption",
+	"wildlife",
+]
+
+
 @dataclass
 class PostCheckRules:
-	blocked_terms: list[str]
-	term_patterns: list[re.Pattern[str]] = field(default_factory=list)
+	advocacy_keywords: list[str]
+	negative_threshold: float
+	negative_ratio: float
+	min_posts: int
 
 
 @dataclass(frozen=True)
@@ -35,10 +54,17 @@ def load_post_check_rules(config_path: str | Path) -> PostCheckRules:
 		raise FileNotFoundError(f"Post-check config not found: {path}")
 
 	raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-	blocked_terms = _normalize_list(raw.get("blocked_terms", []))
-	patterns = [re.compile(term, re.IGNORECASE) for term in blocked_terms]
+	advocacy_keywords = _normalize_list(raw.get("advocacy_keywords", DEFAULT_ADVOCACY_KEYWORDS))
+	negative_threshold = float(raw.get("negative_threshold", -0.4))
+	negative_ratio = float(raw.get("negative_ratio", 0.6))
+	min_posts = int(raw.get("min_posts", 3))
 
-	return PostCheckRules(blocked_terms=blocked_terms, term_patterns=patterns)
+	return PostCheckRules(
+		advocacy_keywords=advocacy_keywords,
+		negative_threshold=negative_threshold,
+		negative_ratio=negative_ratio,
+		min_posts=min_posts,
+	)
 
 
 def post_batch_check(
@@ -49,6 +75,7 @@ def post_batch_check(
 	config = config or PostCheckConfig()
 	client = _create_supabase_client(config)
 
+	analyzer = SentimentIntensityAnalyzer()
 	kept: list[dict[str, Any]] = []
 	blocked: list[dict[str, Any]] = []
 	for trend in trends:
@@ -60,9 +87,9 @@ def post_batch_check(
 
 		posts = _fetch_posts_by_id(client, example_ids, config)
 		cluster_text = _collect_cluster_text(posts)
-		if cluster_text and _matches_terms(cluster_text, rules.term_patterns):
-			logger.warning("Post-check drop: trend_id=%s matched blocked terms", trend_id)
-			blocked.append({"trend_id": trend_id, "reason": "blocked_terms"})
+		if _is_negative_trend(posts, cluster_text, rules, analyzer):
+			logger.warning("Post-check drop: trend_id=%s negative sentiment consensus", trend_id)
+			blocked.append({"trend_id": trend_id, "reason": "negative_sentiment"})
 			continue
 
 		kept.append(trend)
@@ -98,8 +125,47 @@ def _collect_cluster_text(posts: Iterable[dict[str, Any]]) -> str:
 	return "\n".join(parts)
 
 
-def _matches_terms(text: str, patterns: Iterable[re.Pattern[str]]) -> bool:
-	return any(pattern.search(text) for pattern in patterns)
+def _is_negative_trend(
+	posts: list[dict[str, Any]],
+	cluster_text: str,
+	rules: PostCheckRules,
+	analyzer: SentimentIntensityAnalyzer,
+) -> bool:
+	if not cluster_text:
+		return False
+	if not _has_advocacy_context(cluster_text, rules.advocacy_keywords):
+		return False
+	if len(posts) < max(1, rules.min_posts):
+		return False
+
+	negative_hits = 0
+	considered = 0
+	for post in posts:
+		post_text = _collect_post_text(post)
+		if not post_text:
+			continue
+		considered += 1
+		compound = analyzer.polarity_scores(post_text).get("compound", 0.0)
+		if compound <= rules.negative_threshold:
+			negative_hits += 1
+
+	if considered == 0:
+		return False
+	return (negative_hits / considered) >= rules.negative_ratio
+
+
+def _collect_post_text(post: dict[str, Any]) -> str:
+	parts: list[str] = []
+	for key in ("text", "title", "body"):
+		value = post.get(key)
+		if value:
+			parts.append(str(value))
+	return "\n".join(parts)
+
+
+def _has_advocacy_context(text: str, keywords: Iterable[str]) -> bool:
+	text_lower = text.lower()
+	return any(keyword.lower() in text_lower for keyword in keywords)
 
 
 def _normalize_list(items: Iterable[Any]) -> list[str]:
