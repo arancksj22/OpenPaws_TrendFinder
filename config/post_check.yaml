@@ -1,0 +1,26 @@
+# Sentiment-only post-batch check configuration.
+# The filter runs only when advocacy keywords are present in the cluster text.
+\
+# Keywords used to confirm animal-advocacy context before sentiment filtering.
+advocacy_keywords:
+  - "animal"
+  - "animals"
+  - "animal rights"
+  - "animal welfare"
+  - "vegan"
+  - "veganism"
+  - "plant-based"
+  - "factory farm"
+  - "fur"
+  - "sanctuary"
+  - "rescue"
+  - "adoption"
+  - "wildlife"
+
+# Sentiment consensus thresholds (VADER compound score).
+# negative_threshold: post is negative if compound <= this value.
+# negative_ratio: minimum share of negative posts required to drop a trend.
+# min_posts: minimum number of example posts to consider for consensus.
+negative_threshold: -0.4
+negative_ratio: 0.6
+min_posts: 3
