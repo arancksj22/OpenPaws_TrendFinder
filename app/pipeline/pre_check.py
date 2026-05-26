@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import Any, Iterable
 
 import yaml
 
+logger = logging.getLogger(__name__)
 
 @dataclass
 class PreCheckRules:
@@ -42,6 +44,9 @@ def filter_posts(posts: Iterable[dict[str, Any]], rules: PreCheckRules) -> list[
 	for post in posts:
 		if _is_blocked(post, rules):
 			continue
+		scrubbed_comments = _scrub_comments(post.get("comments", []) or [], rules.term_patterns)
+		post["comments"] = scrubbed_comments
+		post["comment_count_ingested"] = len(scrubbed_comments)
 		kept.append(post)
 	return kept
 
@@ -55,28 +60,36 @@ def _is_blocked(post: dict[str, Any], rules: PreCheckRules) -> bool:
 	if community and community in rules.blocked_subreddits:
 		return True
 
-	text = _collect_text(post)
-	if text and _matches_terms(text, rules.term_patterns):
+	parent_text = _collect_parent_text(post)
+	if parent_text and _matches_terms(parent_text, rules.term_patterns):
+		logger.warning("Pre-check drop: blocked term matched in parent text")
 		return True
 
 	return False
 
 
-def _collect_text(post: dict[str, Any]) -> str:
+def _collect_parent_text(post: dict[str, Any]) -> str:
 	parts: list[str] = []
-	for key in ("text", "title", "body", "selftext"):
+	for key in ("title", "text", "body", "selftext"):
 		value = post.get(key)
 		if value:
 			parts.append(str(value))
+	return "\n".join(parts)
 
-	for comment in post.get("comments", []) or []:
+
+def _scrub_comments(
+	comments: Iterable[dict[str, Any]],
+	patterns: Iterable[re.Pattern[str]],
+) -> list[dict[str, Any]]:
+	kept: list[dict[str, Any]] = []
+	for comment in comments:
 		if not isinstance(comment, dict):
 			continue
 		body = comment.get("body")
-		if body:
-			parts.append(str(body))
-
-	return "\n".join(parts)
+		if body and _matches_terms(str(body), patterns):
+			continue
+		kept.append(comment)
+	return kept
 
 
 def _matches_terms(text: str, patterns: Iterable[re.Pattern[str]]) -> bool:
