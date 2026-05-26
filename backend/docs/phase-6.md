@@ -100,13 +100,6 @@ The module reads:
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `GEMINI_API_KEY`
 
-## Required Supabase Schema Changes
-The `trends` table needs two columns added beyond what Phase 4 created:
-```sql
-ALTER TABLE trends ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending_review';
-ALTER TABLE trends ADD COLUMN IF NOT EXISTS explainer TEXT;
-```
-
 ## Notes
 - This phase is **not** part of the automated pipeline flow. It is triggered by human dashboard interaction.
 - The Gemini call is deliberately cheap: Flash model, 300 max output tokens, low temperature.
