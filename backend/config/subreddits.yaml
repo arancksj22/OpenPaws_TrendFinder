@@ -1,6 +1,6 @@
 defaults:
   feed: rising
-  post_limit: 25
+  post_limit: 15
   comment_limit: 5
   comment_sort: best
   include_comments: true
