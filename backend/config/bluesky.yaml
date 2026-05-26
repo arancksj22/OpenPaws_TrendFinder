@@ -1,0 +1,27 @@
+defaults:
+  sort: latest
+  post_limit: 15
+  reply_depth: 1
+  max_replies: 5
+  request_delay_seconds: 1.0
+
+# Edit this list freely; omit the '#' prefix from tag names.
+hashtag_groups:
+  - tags:
+      - AnimalRights
+      - AnimalWelfare
+    enabled: true
+  - tags:
+      - vegan
+      - veganism
+      - PlantBased
+    enabled: true
+  - tags:
+      - FurFree
+      - AnimalRescue
+      - AnimalSanctuary
+    enabled: true
+  - tags:
+      - FactoryFarming
+      - EndAnimalTesting
+    enabled: false

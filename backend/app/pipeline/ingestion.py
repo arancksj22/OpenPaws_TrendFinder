@@ -1,49 +1,54 @@
-"""Reddit ingestion for Phase 1 (text-only)."""
+"""Bluesky ingestion for Phase 1 (text-only).
+
+Polls Bluesky via the AT Protocol Lexicon search API to fetch posts matching
+configured hashtags, then retrieves reply threads for each post.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
-import asyncpraw
 import yaml
-from prawcore.exceptions import PrawcoreException, RateLimitExceeded
+from atproto import Client
 
 logger = logging.getLogger(__name__)
-
-SUPPORTED_FEEDS = {"rising", "new", "hot", "top"}
 
 
 class IngestionConfigError(RuntimeError):
 	"""Raised when ingestion configuration is invalid or missing."""
 
 
+SUPPORTED_SORTS = {"latest", "top"}
+
+
 @dataclass(frozen=True)
 class IngestionDefaults:
-	feed: str = "rising"
+	sort: str = "latest"
 	post_limit: int = 25
-	comment_limit: int = 5
-	comment_sort: str = "best"
-	include_comments: bool = True
+	reply_depth: int = 1
+	max_replies: int = 5
 	request_delay_seconds: float = 1.0
 
 
 @dataclass(frozen=True)
-class SubredditSource:
-	name: str
+class HashtagSource:
+	tags: list[str] = field(default_factory=list)
 	enabled: bool = True
-	feed: str | None = None
+	sort: str | None = None
 	post_limit: int | None = None
-	comment_limit: int | None = None
-	comment_sort: str | None = None
-	include_comments: bool | None = None
+	reply_depth: int | None = None
+	max_replies: int | None = None
 
 
-def load_subreddit_config(config_path: str | Path) -> tuple[IngestionDefaults, list[SubredditSource]]:
+def load_bluesky_config(
+	config_path: str | Path,
+) -> tuple[IngestionDefaults, list[HashtagSource]]:
 	path = Path(config_path)
 	if not path.exists():
 		raise IngestionConfigError(f"Config file not found: {path}")
@@ -51,221 +56,328 @@ def load_subreddit_config(config_path: str | Path) -> tuple[IngestionDefaults, l
 	raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 	defaults_raw = raw.get("defaults", {})
 	defaults = IngestionDefaults(
-		feed=_validate_feed(defaults_raw.get("feed", "rising")),
+		sort=_validate_sort(defaults_raw.get("sort", "latest")),
 		post_limit=int(defaults_raw.get("post_limit", 25)),
-		comment_limit=int(defaults_raw.get("comment_limit", 5)),
-		comment_sort=str(defaults_raw.get("comment_sort", "best")),
-		include_comments=bool(defaults_raw.get("include_comments", True)),
-		request_delay_seconds=float(defaults_raw.get("request_delay_seconds", 1.0)),
+		reply_depth=int(defaults_raw.get("reply_depth", 1)),
+		max_replies=int(defaults_raw.get("max_replies", 5)),
+		request_delay_seconds=float(
+			defaults_raw.get("request_delay_seconds", 1.0)
+		),
 	)
 
-	subreddits_raw = raw.get("subreddits", [])
-	sources: list[SubredditSource] = []
-	for entry in subreddits_raw:
-		if isinstance(entry, str):
-			name = entry.strip()
-			if not name:
-				continue
-			sources.append(SubredditSource(name=name))
-			continue
-
+	hashtag_groups_raw = raw.get("hashtag_groups", [])
+	sources: list[HashtagSource] = []
+	for entry in hashtag_groups_raw:
 		if not isinstance(entry, dict):
 			continue
 
-		name = str(entry.get("name", "")).strip()
-		if not name:
+		tags = _normalize_tag_list(entry.get("tags", []))
+		if not tags:
 			continue
+
 		sources.append(
-			SubredditSource(
-				name=name,
+			HashtagSource(
+				tags=tags,
 				enabled=bool(entry.get("enabled", True)),
-				feed=_optional_feed(entry.get("feed")),
+				sort=_optional_sort(entry.get("sort")),
 				post_limit=_optional_int(entry.get("post_limit")),
-				comment_limit=_optional_int(entry.get("comment_limit")),
-				comment_sort=_optional_str(entry.get("comment_sort")),
-				include_comments=_optional_bool(entry.get("include_comments")),
+				reply_depth=_optional_int(entry.get("reply_depth")),
+				max_replies=_optional_int(entry.get("max_replies")),
 			)
 		)
 
 	if not sources:
-		raise IngestionConfigError("No subreddits configured.")
+		raise IngestionConfigError("No hashtag groups configured.")
 
 	return defaults, sources
 
 
-async def ingest_reddit_posts(config_path: str | Path) -> list[dict[str, Any]]:
-	defaults, sources = load_subreddit_config(config_path)
-	reddit = _build_reddit_client()
-	reddit.read_only = True
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+
+async def ingest_bluesky_posts(
+	config_path: str | Path,
+) -> list[dict[str, Any]]:
+	"""Fetch Bluesky posts matching configured hashtags with reply threads.
+
+	This is the main entry point for the ingestion phase. It mirrors the
+	public API of the former ``ingest_reddit_posts`` function: accepts a
+	config path and returns a flat list of raw post dicts.
+	"""
+	defaults, sources = load_bluesky_config(config_path)
+	client = _build_bluesky_client()
 
 	results: list[dict[str, Any]] = []
-	try:
-		for source in sources:
-			if not source.enabled:
-				continue
+	seen_uris: set[str] = set()
 
-			effective = _merge_defaults(defaults, source)
-			try:
-				subreddit = await reddit.subreddit(source.name)
-				posts = await _fetch_subreddit_posts(subreddit, effective)
-				results.extend(posts)
-			except RateLimitExceeded as exc:
-				delay = max(defaults.request_delay_seconds, float(getattr(exc, "sleep", 5)))
-				logger.warning("Rate limit hit for r/%s, sleeping %s seconds", source.name, delay)
-				await asyncio.sleep(delay)
-			except PrawcoreException as exc:
-				logger.warning("Reddit API error for r/%s: %s", source.name, exc)
+	for source in sources:
+		if not source.enabled:
+			continue
 
-			await _safe_sleep(defaults.request_delay_seconds)
-	finally:
-		await reddit.close()
+		effective = _merge_defaults(defaults, source)
+
+		try:
+			posts = _search_posts(client, source.tags, effective)
+			for post in posts:
+				uri = post.get("post_uri")
+				if uri in seen_uris:
+					continue
+				seen_uris.add(uri)
+				results.append(post)
+		except Exception as exc:
+			logger.warning(
+				"Bluesky search error for tags %s: %s", source.tags, exc,
+			)
+
+		await _safe_sleep(defaults.request_delay_seconds)
 
 	return results
 
 
-async def _fetch_subreddit_posts(
-	subreddit: asyncpraw.models.Subreddit,
+# ---------------------------------------------------------------------------
+# Bluesky client helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_bluesky_client() -> Client:
+	handle = os.getenv("BLUESKY_HANDLE")
+	app_password = os.getenv("BLUESKY_APP_PASSWORD")
+
+	if not handle or not app_password:
+		raise IngestionConfigError(
+			"Missing Bluesky environment variables. "
+			"Set BLUESKY_HANDLE and BLUESKY_APP_PASSWORD."
+		)
+
+	client = Client()
+	client.login(handle, app_password)
+	return client
+
+
+def _search_posts(
+	client: Client,
+	tags: list[str],
 	settings: IngestionDefaults,
 ) -> list[dict[str, Any]]:
-	listing = _get_listing(subreddit, settings)
+	"""Search Bluesky for posts matching the given hashtags."""
+	response = client.app.bsky.feed.search_posts(
+		params={
+			"q": "*",
+			"tag": tags,
+			"sort": settings.sort,
+			"limit": min(settings.post_limit, 100),
+		}
+	)
+
 	posts: list[dict[str, Any]] = []
-
-	async for submission in listing:
-		if getattr(submission, "stickied", False):
-			continue
-
-		post = await _extract_submission(submission, settings)
+	for post_view in response.posts or []:
+		post = _extract_post(client, post_view, settings)
 		if post is not None:
 			posts.append(post)
 
 	return posts
 
 
-def _get_listing(
-	subreddit: asyncpraw.models.Subreddit,
-	settings: IngestionDefaults,
-):
-	feed = settings.feed
-	if feed == "rising":
-		return subreddit.rising(limit=settings.post_limit)
-	if feed == "new":
-		return subreddit.new(limit=settings.post_limit)
-	if feed == "hot":
-		return subreddit.hot(limit=settings.post_limit)
-	if feed == "top":
-		return subreddit.top(time_filter="day", limit=settings.post_limit)
-
-	raise IngestionConfigError(f"Unsupported feed: {feed}")
-
-
-async def _extract_submission(
-	submission: asyncpraw.models.Submission,
+def _extract_post(
+	client: Client,
+	post_view: Any,
 	settings: IngestionDefaults,
 ) -> dict[str, Any] | None:
-	title = _clean_text(getattr(submission, "title", ""))
-	selftext = _clean_text(getattr(submission, "selftext", ""))
+	"""Extract a raw post dict from a Bluesky PostView object."""
+	record = post_view.record
+	if record is None:
+		return None
 
-	author = submission.author.name if submission.author else None
-	permalink = f"https://www.reddit.com{submission.permalink}"
+	text = _clean_text(getattr(record, "text", ""))
+	author_handle = post_view.author.handle if post_view.author else None
+	post_uri = post_view.uri
+	post_cid = post_view.cid
 
+	# Parse created_at into a UTC float timestamp for downstream compat.
+	created_utc = _parse_created_at(getattr(record, "created_at", None))
+
+	# Extract engagement metrics from the post_view.
+	like_count = getattr(post_view, "like_count", None) or 0
+	reply_count = getattr(post_view, "reply_count", None) or 0
+	repost_count = getattr(post_view, "repost_count", None) or 0
+
+	# Derive community from hashtags or author handle.
+	community = _derive_community(record, author_handle)
+
+	# Build the Bluesky permalink.
+	permalink = _build_permalink(author_handle, post_uri)
+
+	# Fetch reply thread.
 	comments: list[dict[str, Any]] = []
-	if settings.include_comments and settings.comment_limit > 0:
-		comments = await _fetch_top_comments(
-			submission,
-			limit=settings.comment_limit,
-			sort=settings.comment_sort,
+	if settings.reply_depth > 0 and settings.max_replies > 0:
+		comments = _fetch_replies(
+			client,
+			post_uri,
+			depth=settings.reply_depth,
+			max_replies=settings.max_replies,
 		)
 
 	return {
-		"source": "reddit",
-		"subreddit": str(submission.subreddit),
-		"post_id": submission.id,
-		"post_fullname": submission.name,
-		"title": title,
-		"selftext": selftext,
-		"url": submission.url,
+		"source": "bluesky",
+		"community": community,
+		"post_id": post_uri,
+		"post_cid": post_cid,
+		"text": text,
+		"url": permalink,
 		"permalink": permalink,
-		"created_utc": submission.created_utc,
-		"score": submission.score,
-		"num_comments": submission.num_comments,
-		"upvote_ratio": getattr(submission, "upvote_ratio", None),
-		"is_self": submission.is_self,
-		"over_18": submission.over_18,
-		"author": author,
+		"created_utc": created_utc,
+		"score": like_count,
+		"num_comments": reply_count,
+		"repost_count": repost_count,
+		"author": author_handle,
 		"comments": comments,
 		"comment_count_ingested": len(comments),
 	}
 
 
-async def _fetch_top_comments(
-	submission: asyncpraw.models.Submission,
-	limit: int,
-	sort: str,
+def _fetch_replies(
+	client: Client,
+	post_uri: str,
+	depth: int,
+	max_replies: int,
 ) -> list[dict[str, Any]]:
-	submission.comment_sort = sort
-	await submission.comments.replace_more(limit=0)
+	"""Fetch reply thread for a post."""
+	try:
+		thread_response = client.get_post_thread(
+			uri=post_uri,
+			depth=depth,
+			parent_height=0,
+		)
+	except Exception as exc:
+		logger.warning("Failed to fetch thread for %s: %s", post_uri, exc)
+		return []
+
+	thread = thread_response.thread
+	if not hasattr(thread, "replies") or not thread.replies:
+		return []
 
 	comments: list[dict[str, Any]] = []
-	for comment in submission.comments:
-		if len(comments) >= limit:
+	for reply_node in thread.replies:
+		if len(comments) >= max_replies:
 			break
-		body = _clean_text(getattr(comment, "body", ""))
+
+		reply_post = getattr(reply_node, "post", None)
+		if reply_post is None:
+			continue
+
+		reply_record = reply_post.record
+		if reply_record is None:
+			continue
+
+		body = _clean_text(getattr(reply_record, "text", ""))
 		if not body:
 			continue
-		author = comment.author.name if comment.author else None
+
+		reply_author = (
+			reply_post.author.handle if reply_post.author else None
+		)
+		reply_like_count = getattr(reply_post, "like_count", None) or 0
+		reply_created = _parse_created_at(
+			getattr(reply_record, "created_at", None)
+		)
+
 		comments.append(
 			{
-				"comment_id": comment.id,
+				"comment_id": reply_post.uri,
 				"body": body,
-				"author": author,
-				"score": comment.score,
-				"created_utc": comment.created_utc,
+				"author": reply_author,
+				"score": reply_like_count,
+				"created_utc": reply_created,
 			}
 		)
 
 	return comments
 
 
-def _build_reddit_client() -> asyncpraw.Reddit:
-	client_id = os.getenv("REDDIT_CLIENT_ID")
-	client_secret = os.getenv("REDDIT_CLIENT_SECRET")
-	user_agent = os.getenv("REDDIT_USER_AGENT")
-
-	if not client_id or not client_secret or not user_agent:
-		raise IngestionConfigError(
-			"Missing Reddit API environment variables. "
-			"Set REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, and REDDIT_USER_AGENT."
-		)
-
-	return asyncpraw.Reddit(
-		client_id=client_id,
-		client_secret=client_secret,
-		user_agent=user_agent,
-	)
+# ---------------------------------------------------------------------------
+# Utility helpers
+# ---------------------------------------------------------------------------
 
 
-def _merge_defaults(defaults: IngestionDefaults, source: SubredditSource) -> IngestionDefaults:
+def _derive_community(record: Any, author_handle: str | None) -> str:
+	"""Best-effort community derivation from hashtags embedded in the post.
+
+	Bluesky has no "subreddit" concept. We use the first facet hashtag
+	found in the record as the community label. Falls back to the
+	author's handle domain.
+	"""
+	facets = getattr(record, "facets", None)
+	if facets:
+		for facet in facets:
+			features = getattr(facet, "features", None)
+			if not features:
+				continue
+			for feature in features:
+				tag = getattr(feature, "tag", None)
+				if tag:
+					return tag.lower()
+
+	# Fallback: use the author handle minus .bsky.social suffix.
+	if author_handle:
+		return author_handle.replace(".bsky.social", "")
+	return "bluesky"
+
+
+def _build_permalink(author_handle: str | None, post_uri: str) -> str:
+	"""Build a human-readable Bluesky web URL from an AT URI.
+
+	AT URIs look like: at://did:plc:abc123/app.bsky.feed.post/3abcdef
+	Web URLs look like: https://bsky.app/profile/handle/post/3abcdef
+	"""
+	if author_handle and "/app.bsky.feed.post/" in post_uri:
+		rkey = post_uri.split("/app.bsky.feed.post/")[-1]
+		return f"https://bsky.app/profile/{author_handle}/post/{rkey}"
+	return post_uri
+
+
+def _parse_created_at(value: Any) -> float | None:
+	"""Convert an ISO-8601 datetime string to a UTC float timestamp."""
+	if value is None:
+		return None
+	if isinstance(value, (int, float)):
+		return float(value)
+
+	try:
+		dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+		return dt.timestamp()
+	except (ValueError, TypeError):
+		return None
+
+
+def _merge_defaults(
+	defaults: IngestionDefaults, source: HashtagSource
+) -> IngestionDefaults:
 	return IngestionDefaults(
-		feed=source.feed or defaults.feed,
+		sort=source.sort or defaults.sort,
 		post_limit=source.post_limit or defaults.post_limit,
-		comment_limit=source.comment_limit or defaults.comment_limit,
-		comment_sort=source.comment_sort or defaults.comment_sort,
-		include_comments=defaults.include_comments if source.include_comments is None else source.include_comments,
+		reply_depth=(
+			source.reply_depth
+			if source.reply_depth is not None
+			else defaults.reply_depth
+		),
+		max_replies=source.max_replies or defaults.max_replies,
 		request_delay_seconds=defaults.request_delay_seconds,
 	)
 
 
-def _validate_feed(feed: str) -> str:
-	feed_normalized = str(feed).lower().strip()
-	if feed_normalized not in SUPPORTED_FEEDS:
-		raise IngestionConfigError(f"Unsupported feed: {feed}")
-	return feed_normalized
+def _validate_sort(sort: str) -> str:
+	sort_normalized = str(sort).lower().strip()
+	if sort_normalized not in SUPPORTED_SORTS:
+		raise IngestionConfigError(f"Unsupported sort: {sort}")
+	return sort_normalized
 
 
-def _optional_feed(value: Any) -> str | None:
+def _optional_sort(value: Any) -> str | None:
 	if value is None:
 		return None
-	return _validate_feed(value)
+	return _validate_sort(value)
 
 
 def _optional_int(value: Any) -> int | None:
@@ -274,23 +386,23 @@ def _optional_int(value: Any) -> int | None:
 	return int(value)
 
 
-def _optional_str(value: Any) -> str | None:
-	if value is None:
-		return None
-	return str(value)
-
-
-def _optional_bool(value: Any) -> bool | None:
-	if value is None:
-		return None
-	return bool(value)
+def _normalize_tag_list(items: Any) -> list[str]:
+	"""Normalize a list of hashtag strings, stripping '#' prefixes."""
+	if not items:
+		return []
+	result: list[str] = []
+	for item in items:
+		tag = str(item).strip().lstrip("#")
+		if tag:
+			result.append(tag)
+	return result
 
 
 def _clean_text(text: str | None) -> str | None:
 	if not text:
 		return None
 	cleaned = text.strip()
-	if cleaned in {"[deleted]", "[removed]"}:
+	if not cleaned:
 		return None
 	return cleaned
 

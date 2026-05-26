@@ -12,8 +12,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core.queue import RedisQueue, RedisQueueConfig
-from app.pipeline.ingestion import ingest_reddit_posts
-from app.pipeline.normalization import normalize_reddit_posts
+from app.pipeline.ingestion import ingest_bluesky_posts
+from app.pipeline.normalization import normalize_bluesky_posts
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ router = APIRouter()
 
 class PipelineTriggerRequest(BaseModel):
 	trigger: Literal["cron", "ui"] = "cron"
-	subreddit_config_path: str = "config/subreddits.yaml"
+	bluesky_config_path: str = "config/bluesky.yaml"
 	discovery_stream_name: str = "trendfinder:discovery"
 	async_run: bool = True
 
@@ -43,7 +43,7 @@ async def trigger_pipeline(request: PipelineTriggerRequest) -> JSONResponse:
 		task_id = uuid4().hex
 		asyncio.create_task(
 			_run_discovery_pipeline(
-				subreddit_config_path=request.subreddit_config_path,
+				bluesky_config_path=request.bluesky_config_path,
 				discovery_stream_name=request.discovery_stream_name,
 				task_id=task_id,
 			)
@@ -60,7 +60,7 @@ async def trigger_pipeline(request: PipelineTriggerRequest) -> JSONResponse:
 		)
 
 	results = await _run_discovery_pipeline(
-		subreddit_config_path=request.subreddit_config_path,
+		bluesky_config_path=request.bluesky_config_path,
 		discovery_stream_name=request.discovery_stream_name,
 		task_id=None,
 	)
@@ -77,13 +77,13 @@ async def trigger_pipeline(request: PipelineTriggerRequest) -> JSONResponse:
 
 
 async def _run_discovery_pipeline(
-	subreddit_config_path: str,
+	bluesky_config_path: str,
 	discovery_stream_name: str,
 	task_id: str | None,
 ) -> dict[str, int]:
 	try:
-		raw_posts = await ingest_reddit_posts(subreddit_config_path)
-		normalized_posts = normalize_reddit_posts(raw_posts)
+		raw_posts = await ingest_bluesky_posts(bluesky_config_path)
+		normalized_posts = normalize_bluesky_posts(raw_posts)
 		queue = await RedisQueue.create(
 			RedisQueueConfig(stream_name=discovery_stream_name)
 		)

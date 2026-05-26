@@ -11,6 +11,8 @@ from app.schemas.post import (
 	NormalizedPost,
 	PostFlags,
 	PostMetrics,
+	RawBlueskyPost,
+	RawBlueskyReply,
 	RawRedditComment,
 	RawRedditPost,
 )
@@ -18,19 +20,89 @@ from app.schemas.post import (
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
-def normalize_reddit_posts(raw_posts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+# ---------------------------------------------------------------------------
+# Bluesky normalization (primary)
+# ---------------------------------------------------------------------------
+
+
+def normalize_bluesky_posts(raw_posts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
 	normalized: list[dict[str, Any]] = []
 	for raw in raw_posts:
-		parsed = _validate_model(RawRedditPost, raw)
-		normalized_post = _normalize_post(parsed)
+		parsed = _validate_model(RawBlueskyPost, raw)
+		normalized_post = _normalize_bluesky_post(parsed)
 		normalized.append(_model_dump(normalized_post))
 	return normalized
 
 
-def _normalize_post(raw: RawRedditPost) -> NormalizedPost:
+def _normalize_bluesky_post(raw: RawBlueskyPost) -> NormalizedPost:
+	# Bluesky posts have no title — text field is the full body.
+	text = raw.text
+	comments = [
+		_normalize_bluesky_reply(raw.source, reply)
+		for reply in raw.comments
+		if _has_text(reply.body)
+	]
+	normalized_comments = [c for c in comments if c is not None]
+
+	return NormalizedPost(
+		source=raw.source,
+		source_id=raw.post_id,
+		source_fullname=raw.post_cid,
+		community=raw.community,
+		title=None,
+		body=raw.text,
+		text=text,
+		author=raw.author,
+		url=raw.url,
+		permalink=raw.permalink,
+		created_utc=raw.created_utc,
+		metrics=PostMetrics(
+			score=raw.score,
+			num_comments=raw.num_comments,
+			upvote_ratio=None,
+		),
+		flags=PostFlags(
+			is_self=True,
+			over_18=False,
+		),
+		comments=normalized_comments,
+		comment_count_ingested=len(normalized_comments),
+	)
+
+
+def _normalize_bluesky_reply(
+	source: str, reply: RawBlueskyReply,
+) -> NormalizedComment | None:
+	if not _has_text(reply.body):
+		return None
+	return NormalizedComment(
+		source=source,
+		source_id=reply.comment_id,
+		body=reply.body,
+		author=reply.author,
+		score=reply.score,
+		created_utc=reply.created_utc,
+	)
+
+
+# ---------------------------------------------------------------------------
+# Reddit normalization (kept for backward compatibility)
+# ---------------------------------------------------------------------------
+
+
+def normalize_reddit_posts(raw_posts: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+	normalized: list[dict[str, Any]] = []
+	for raw in raw_posts:
+		parsed = _validate_model(RawRedditPost, raw)
+		normalized_post = _normalize_reddit_post(parsed)
+		normalized.append(_model_dump(normalized_post))
+	return normalized
+
+
+def _normalize_reddit_post(raw: RawRedditPost) -> NormalizedPost:
 	text = _merge_text(raw.title, raw.selftext)
 	comments = [
-		_normalize_comment(raw.source, comment)
+		_normalize_reddit_comment(raw.source, comment)
 		for comment in raw.comments
 		if _has_text(comment.body)
 	]
@@ -62,7 +134,9 @@ def _normalize_post(raw: RawRedditPost) -> NormalizedPost:
 	)
 
 
-def _normalize_comment(source: str, comment: RawRedditComment) -> NormalizedComment | None:
+def _normalize_reddit_comment(
+	source: str, comment: RawRedditComment,
+) -> NormalizedComment | None:
 	if not _has_text(comment.body):
 		return None
 	return NormalizedComment(
@@ -73,6 +147,11 @@ def _normalize_comment(source: str, comment: RawRedditComment) -> NormalizedComm
 		score=comment.score,
 		created_utc=comment.created_utc,
 	)
+
+
+# ---------------------------------------------------------------------------
+# Shared helpers
+# ---------------------------------------------------------------------------
 
 
 def _merge_text(title: str | None, body: str | None) -> str | None:

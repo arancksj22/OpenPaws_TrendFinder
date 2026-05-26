@@ -56,7 +56,7 @@ def _is_blocked(post: dict[str, Any], rules: PreCheckRules) -> bool:
 	if source and source in rules.blocked_sources:
 		return True
 
-	community = str(post.get("community") or post.get("subreddit") or "").lower()
+	community = str(post.get("community") or "").lower()
 	if community and community in rules.blocked_subreddits:
 		return True
 
