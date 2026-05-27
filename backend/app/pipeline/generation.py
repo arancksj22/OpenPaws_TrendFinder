@@ -346,20 +346,10 @@ def _generate_trend_image(
 		import urllib.parse
 		import urllib.request
 
-		import random
-		palettes = [
-			"vibrant cinematic lighting, highly aesthetic rich gradients",
-			"soft pastel colors, dreamy minimalist atmosphere",
-			"bold high-contrast duotone, modern editorial photography",
-			"warm golden hour lighting, natural organic feel, beautiful",
-			"deep moody shadows, neon accents, striking composition"
-		]
-		style = random.choice(palettes)
-
+		# A very simple, concise prompt focused on animal advocacy and the trend's core message.
 		prompt = (
-			f"A stunning, highly aesthetic visual artwork. No text, no words, no letters. "
-			f"Visual style: {style}. "
-			f"Subject: A beautiful, simplistic visual metaphor for: {brief.positioning_angle[:150]}"
+			f"Simple beautiful animal advocacy artwork about: {brief.positioning_angle[:100]}. "
+			"No text. No words. Minimalist."
 		)
 		
 		encoded_prompt = urllib.parse.quote(prompt)
