@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import get_current_user_id
+from app.core.security import AuthContext, get_auth_context
 from app.pipeline.production_storage import StorageConfig, fetch_user_history
 from app.schemas.content import HistoryResponse
 
@@ -17,14 +17,14 @@ router = APIRouter()
 
 @router.get("/", response_model=HistoryResponse)
 def get_history(
-	user_id: str = Depends(get_current_user_id),
+	auth: AuthContext = Depends(get_auth_context),
 	limit: int = Query(default=20, ge=1, le=100),
 	offset: int = Query(default=0, ge=0),
 ) -> HistoryResponse:
 	try:
 		records = fetch_user_history(
-			user_id=user_id,
-			config=StorageConfig(),
+			user_id=auth.user_id,
+			config=StorageConfig(user_jwt=auth.token),
 			limit=limit,
 			offset=offset,
 		)

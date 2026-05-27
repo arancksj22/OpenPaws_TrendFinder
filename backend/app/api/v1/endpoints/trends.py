@@ -6,7 +6,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.security import get_current_user_id
+from app.core.security import AuthContext, get_auth_context
 from app.pipeline.cybersec_check import load_cybersec_rules, sanitize_trend_payload
 from app.pipeline.generation import GenerationConfig, generate_content
 from app.pipeline.humanintheloop import (
@@ -95,7 +95,7 @@ def request_explainer(trend_id: str) -> ExplainerResponse:
 @router.post("/{trend_id}/generate", response_model=GenerateContentResponse)
 def generate_content_for_trend(
 	trend_id: str,
-	user_id: str = Depends(get_current_user_id),
+	auth: AuthContext = Depends(get_auth_context),
 ) -> GenerateContentResponse:
 	"""Chain Phases 7-10 for a single trend.
 
@@ -132,10 +132,10 @@ def generate_content_for_trend(
 		)
 		scored_payload = serialise_result(revalidation_result)
 		storage_result = store_generation(
-			user_id=user_id,
+			user_id=auth.user_id,
 			generation_result=generation_result,
 			scored_payload=scored_payload,
-			config=StorageConfig(),
+			config=StorageConfig(user_jwt=auth.token),
 		)
 	except HTTPException:
 		raise

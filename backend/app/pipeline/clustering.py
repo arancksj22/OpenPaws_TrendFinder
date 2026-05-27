@@ -139,7 +139,11 @@ def _match_posts(client: Client, embedding: list[float], config: ClusteringConfi
 
 def _create_trend(client: Client, cluster_key: str, size: int, config: ClusteringConfig) -> str:
 	response = client.table(config.trends_table).insert(
-		{"cluster_key": cluster_key, "representative_count": min(size, config.top_k)}
+		{
+			"cluster_key": cluster_key,
+			"representative_count": min(size, config.top_k),
+			"status": "pending_review",
+		}
 	).execute()
 	rows = response.data or []
 	if not rows:
