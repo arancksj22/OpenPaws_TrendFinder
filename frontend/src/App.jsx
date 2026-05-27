@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
+import { Button } from './components/ui/button'
+import { Card, CardContent, CardHeader, CardFooter } from './components/ui/card'
+import { Badge } from './components/ui/badge'
+import { Progress } from './components/ui/progress'
+import { Separator } from './components/ui/separator'
+import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './components/ui/collapsible'
+import {
+  RefreshCw, Play, Sparkles, ChevronDown, ExternalLink,
+  Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash
+} from 'lucide-react'
 
 const API_BASE = '/api/v1/trends'
 const HISTORY_API = '/api/v1/history'
@@ -21,29 +31,32 @@ function shortId(id) {
 
 function statusBadge(status) {
   const map = {
-    pending_review: { label: 'Pending Review', cls: 'badge badge--pending' },
-    explainer_ready: { label: 'Explainer Ready', cls: 'badge badge--ready' },
+    pending_review: { label: 'Pending Review', variant: 'pending' },
+    explainer_ready: { label: 'Explainer Ready', variant: 'ready' },
   }
-  const s = map[status] || { label: status ?? 'unknown', cls: 'badge badge--unknown' }
-  return <span className={s.cls}>{s.label}</span>
+  const s = map[status] || { label: status ?? 'Unknown', variant: 'outline' }
+  return <Badge variant={s.variant}>{s.label}</Badge>
 }
 
-// ─── ScoreBar ────────────────────────────────────────────────────────────────
+// ─── ScoreBar ─────────────────────────────────────────────────────────────────
 
-function ScoreBar({ label, value, weight, isComposite }) {
+function ScoreBar({ label, value, isComposite }) {
   const pct = Math.max(0, Math.min(100, value * 100))
-  const color = isComposite ? 'var(--accent)' : 'var(--green)'
   return (
-    <div className={`score-bar ${isComposite ? 'score-bar--composite' : ''}`}>
-      <div className="score-bar__info">
-        <span className="score-bar__label" title={weight ? `Weight: ${weight * 100}%` : ''}>
+    <div className="flex flex-col gap-1.5">
+      <div className="flex justify-between items-center">
+        <span className={`text-xs ${isComposite ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
           {label}
         </span>
-        <span className="score-bar__value">{(value * 100).toFixed(1)}%</span>
+        <span className={`font-mono-data text-xs font-medium ${isComposite ? 'text-primary' : 'text-foreground'}`}>
+          {pct.toFixed(1)}%
+        </span>
       </div>
-      <div className="score-bar__track">
-        <div className="score-bar__fill" style={{ width: `${pct}%`, backgroundColor: color }} />
-      </div>
+      <Progress
+        value={pct}
+        className={isComposite ? 'h-2' : 'h-1'}
+        indicatorClassName={isComposite ? 'bg-primary' : 'bg-emerald-500'}
+      />
     </div>
   )
 }
@@ -52,38 +65,72 @@ function ScoreBar({ label, value, weight, isComposite }) {
 
 function DraftCard({ draft, metrics }) {
   const { tone, text, char_count, hashtags, passed_boundary_check, boundary_issues, is_recommended, scores } = draft
-  
+  const [open, setOpen] = useState(false)
+
+  const toneColors = {
+    factual: 'bg-blue-50 text-blue-700',
+    emotional: 'bg-rose-50 text-rose-700',
+    call_to_action: 'bg-violet-50 text-violet-700',
+  }
+
   return (
-    <div className={`draft-card ${is_recommended ? 'draft-card--recommended' : ''} ${!passed_boundary_check ? 'draft-card--failed' : ''}`}>
-      <div className="draft-card__header">
-        <span className="draft-card__tone">{tone}</span>
-        {is_recommended && <span className="badge badge--ready">★ Recommended</span>}
-        {!passed_boundary_check && <span className="badge badge--pending">⚠ Boundary Failed</span>}
+    <div className={`rounded-xl border p-5 flex flex-col gap-4 transition-all duration-150
+      ${is_recommended ? 'border-primary/25 bg-primary/[0.02]' : 'border-border bg-card'}
+      ${!passed_boundary_check ? 'opacity-60' : ''}
+    `}>
+      <div className="flex items-center justify-between">
+        <span className={`text-[11px] font-semibold uppercase tracking-wider px-2.5 py-1 rounded-full ${toneColors[tone] || 'bg-secondary text-secondary-foreground'}`}>
+          {tone?.replace('_', ' ')}
+        </span>
+        <div className="flex items-center gap-2">
+          {is_recommended && (
+            <Badge variant="ready" className="gap-1">
+              <Star className="w-3 h-3" /> Recommended
+            </Badge>
+          )}
+          {!passed_boundary_check && (
+            <Badge variant="destructive" className="gap-1">
+              <AlertTriangle className="w-3 h-3" /> Boundary Failed
+            </Badge>
+          )}
+        </div>
       </div>
-      
+
       {!passed_boundary_check && boundary_issues?.length > 0 && (
-        <div className="draft-card__issues">
+        <div className="text-xs text-destructive bg-destructive/5 rounded-lg p-3 flex flex-col gap-1">
           {boundary_issues.map((i, idx) => <div key={idx}>• {i}</div>)}
         </div>
       )}
 
-      <p className="draft-card__text">{text}</p>
-      
-      <div className="draft-card__meta">
-        <span>{char_count}/300 chars</span>
-        {hashtags?.length > 0 && <span>· {hashtags.map(h => `#${h}`).join(' ')}</span>}
+      <p className="text-sm leading-relaxed text-foreground">{text}</p>
+
+      <div className="flex items-center gap-3 text-xs text-muted-foreground">
+        <span className="font-mono-data">{char_count}/300</span>
+        {hashtags?.length > 0 && (
+          <span className="flex items-center gap-1 text-primary">
+            <Hash className="w-3 h-3" />
+            {hashtags.map(h => `#${h}`).join(' ')}
+          </span>
+        )}
       </div>
 
-      <div className="draft-card__scores">
+      <Separator />
+
+      <div className="flex flex-col gap-3">
         <ScoreBar label="Composite Score" value={scores.composite} isComposite={true} />
-        <details className="draft-card__scores-details">
-          <summary>View individual metrics</summary>
-          <div className="draft-card__metrics-grid">
-            {metrics.map(m => (
-              <ScoreBar key={m.key} label={m.label} value={scores[m.key]} weight={m.weight} />
-            ))}
-          </div>
-        </details>
+        <Collapsible open={open} onOpenChange={setOpen}>
+          <CollapsibleTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors w-full text-left">
+            <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+            {open ? 'Hide' : 'View'} individual metrics
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <div className="flex flex-col gap-2.5 mt-3">
+              {metrics.map(m => (
+                <ScoreBar key={m.key} label={m.label} value={scores[m.key] ?? 0} />
+              ))}
+            </div>
+          </CollapsibleContent>
+        </Collapsible>
       </div>
     </div>
   )
@@ -97,18 +144,20 @@ function GenerationResultPanel({ data }) {
   const storage = data.storage
 
   return (
-    <div className="gen-panel">
-      <h4 className="gen-panel__title">✦ Generated Content</h4>
-      
+    <div className="mt-4 flex flex-col gap-5">
+      <div className="flex items-center gap-2">
+        <Sparkles className="w-3.5 h-3.5 text-primary" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Generated Content</span>
+      </div>
 
       {storage?.image_url && (
-        <div className="gen-panel__image">
-          <img src={storage.image_url} alt="Generated infographic" loading="lazy" />
+        <div className="overflow-hidden rounded-2xl border border-border shadow-sm">
+          <img src={storage.image_url} alt="Generated visual" className="w-full object-cover" loading="lazy" />
         </div>
       )}
 
-      <div className="gen-panel__drafts">
-        <h5>Scored Drafts</h5>
+      <div className="flex flex-col gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scored Drafts</span>
         {gen.scored_drafts?.map(draft => (
           <DraftCard key={draft.index} draft={draft} metrics={gen.score_meta.metrics} />
         ))}
@@ -121,20 +170,30 @@ function GenerationResultPanel({ data }) {
 
 function ExplainerPanel({ data }) {
   if (!data) return null
+  const [rawOpen, setRawOpen] = useState(false)
   return (
-    <div className="explainer-panel">
-      <h4 className="explainer-panel__title">✦ AI Explainer</h4>
-      <p className="explainer-panel__text">{data.explainer}</p>
-      <div className="explainer-panel__meta">
-        <span>Model: <code>{data.model_used}</code></span>
-        <span>Prompt tokens: <code>{data.prompt_tokens ?? '—'}</code></span>
-        <span>Completion tokens: <code>{data.completion_tokens ?? '—'}</code></span>
-        <span>Trend ID: <code>{data.trend_id}</code></span>
+    <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-100 p-4 flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        <Activity className="w-3.5 h-3.5 text-emerald-600" />
+        <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">AI Explainer</span>
       </div>
-      <details className="explainer-panel__raw">
-        <summary>Raw JSON</summary>
-        <pre>{JSON.stringify(data, null, 2)}</pre>
-      </details>
+      <p className="text-sm leading-relaxed text-gray-700">{data.explainer}</p>
+      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground pt-1 border-t border-emerald-100">
+        <span>Model: <code className="font-mono-data text-foreground">{data.model_used}</code></span>
+        <span>Prompt: <code className="font-mono-data text-foreground">{data.prompt_tokens ?? '—'}</code> tk</span>
+        <span>Completion: <code className="font-mono-data text-foreground">{data.completion_tokens ?? '—'}</code> tk</span>
+      </div>
+      <Collapsible open={rawOpen} onOpenChange={setRawOpen}>
+        <CollapsibleTrigger className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+          <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${rawOpen ? 'rotate-180' : ''}`} />
+          Raw JSON
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <pre className="mt-2 text-[11px] font-mono-data text-muted-foreground bg-white rounded-lg p-3 overflow-auto max-h-48 border border-emerald-100">
+            {JSON.stringify(data, null, 2)}
+          </pre>
+        </CollapsibleContent>
+      </Collapsible>
     </div>
   )
 }
@@ -209,87 +268,128 @@ function TrendCard({ trend, jwtToken }) {
   const examplePosts = trend.example_posts?.slice(0, 5) ?? []
 
   return (
-    <article className="trend-card" id={`trend-${trend.trend_id}`}>
-      <header className="trend-card__header">
-        <div className="trend-card__title-row">
-          <span className="trend-card__id" title={trend.trend_id}>
+    <Card id={`trend-${trend.trend_id}`} className="flex flex-col gap-0 overflow-hidden p-0">
+      {/* Header */}
+      <CardHeader className="px-5 py-4 gap-3">
+        <div className="flex items-center justify-between">
+          <code className="font-mono-data text-[11px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
             #{shortId(trend.trend_id)}
-          </span>
+          </code>
           {statusBadge(trend.status)}
         </div>
-        <div className="trend-card__meta">
-          <span>{trend.representative_count ?? 0} posts</span>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+          <span className="flex items-center gap-1.5">
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span className="font-medium text-foreground">{trend.representative_count ?? 0}</span> posts
+          </span>
           <span>·</span>
-          <span>Cluster: <code>{shortId(trend.cluster_key)}</code></span>
+          <span className="flex items-center gap-1">
+            <Hash className="w-3 h-3" />
+            <code className="font-mono-data text-[11px] bg-secondary px-1.5 py-0.5 rounded text-foreground">
+              {shortId(trend.cluster_key)}
+            </code>
+          </span>
           <span>·</span>
-          <span>{trend.created_at ? new Date(trend.created_at).toLocaleDateString() : '—'}</span>
+          <span className="flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            {trend.created_at ? new Date(trend.created_at).toLocaleDateString() : '—'}
+          </span>
         </div>
-      </header>
+      </CardHeader>
 
+      <Separator />
+
+      {/* Example Posts */}
       {examplePosts.length > 0 && (
-        <section className="trend-card__posts">
-          <h3 className="trend-card__section-label">Top example posts</h3>
-          <ol className="posts-list">
+        <CardContent className="px-5 py-4">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-3">
+            Top Example Posts
+          </p>
+          <ol className="flex flex-col gap-2">
             {examplePosts.map((post) => {
               const link = postLink(post)
               const label = post.title || post.text || post.body || post.id
               return (
-                <li key={post.id} className="posts-list__item">
-                  <span className="posts-list__community">{post.community}</span>
+                <li key={post.id} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors group">
+                  <span className="text-[11px] font-semibold text-muted-foreground w-20 shrink-0 truncate">
+                    {post.community}
+                  </span>
                   {link ? (
                     <a
-                      className="posts-list__link"
                       href={link}
                       target="_blank"
                       rel="noopener noreferrer"
+                      className="flex-1 text-foreground truncate hover:text-primary transition-colors flex items-center gap-1 min-w-0"
                     >
-                      {label}
+                      <span className="truncate">{label}</span>
+                      <ExternalLink className="w-3 h-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                     </a>
                   ) : (
-                    <span className="posts-list__link posts-list__link--no-href">{label}</span>
+                    <span className="flex-1 text-muted-foreground truncate">{label}</span>
                   )}
-                  <span className="posts-list__score">↑{post.score ?? 0}</span>
+                  <span className="text-[11px] font-mono-data text-muted-foreground shrink-0">↑{post.score ?? 0}</span>
                 </li>
               )
             })}
           </ol>
-        </section>
+        </CardContent>
       )}
 
-      <footer className="trend-card__footer">
-        <button
-          className="btn-explain"
+      <Separator />
+
+      {/* Footer Buttons */}
+      <CardFooter className="px-5 py-3 gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={handleExplain}
           disabled={loading || genLoading}
+          className="gap-1.5"
         >
-          {loading ? <span className="spinner" aria-label="Loading" /> : '✦ Explain'}
-        </button>
-        <button
-          className="btn-generate"
+          {loading
+            ? <span className="spinner w-3.5 h-3.5" aria-label="Loading" />
+            : <Activity className="w-3.5 h-3.5" />
+          }
+          Explain
+        </Button>
+        <Button
+          size="sm"
           onClick={handleGenerate}
           disabled={loading || genLoading}
           title="Run Phase 7-10 Pipeline"
+          className="gap-1.5"
         >
-          {genLoading ? <span className="spinner" aria-label="Generating" /> : '✦ Generate'}
-        </button>
-        {error && <p className="trend-card__error">⚠ {error}</p>}
-      </footer>
+          {genLoading
+            ? <span className="spinner w-3.5 h-3.5 border-white/30 border-t-white" aria-label="Generating" />
+            : <Play className="w-3.5 h-3.5" />
+          }
+          Generate
+        </Button>
+        {error && (
+          <p className="text-xs text-destructive flex items-center gap-1 ml-1">
+            <AlertTriangle className="w-3 h-3" /> {error}
+          </p>
+        )}
+      </CardFooter>
 
-      <ExplainerPanel data={explainer} />
-      <GenerationResultPanel data={generation} />
-    </article>
+      {/* Explainer & Generation */}
+      {(explainer || generation) && (
+        <div className="px-5 pb-5">
+          <ExplainerPanel data={explainer} />
+          <GenerationResultPanel data={generation} />
+        </div>
+      )}
+    </Card>
   )
 }
 
 // ─── HistoryItem ─────────────────────────────────────────────────────────────
 
 function HistoryItem({ item }) {
-  // Format the DB record to look like the generation API response so we can reuse GenerationResultPanel
   const mockData = {
     generation: {
       advocacy_brief: item.advocacy_brief,
       score_meta: {
-        // Mocking score meta since it's not stored in the DB directly, or we can just reconstruct it
         metrics: [
           { key: "advocacy_preference", label: "Advocacy Preference" },
           { key: "potential_influence", label: "Potential Influence" },
@@ -305,15 +405,23 @@ function HistoryItem({ item }) {
   }
 
   return (
-    <article className="trend-card history-item">
-      <header className="trend-card__header">
-        <div className="trend-card__title-row">
-          <span className="trend-card__id">Trend #{shortId(item.trend_id)}</span>
-          <span className="badge badge--ready">Generated {new Date(item.created_at).toLocaleDateString()}</span>
+    <Card className="overflow-hidden p-0">
+      <CardHeader className="px-5 py-4">
+        <div className="flex items-center justify-between">
+          <span className="font-mono-data text-[11px] text-muted-foreground">
+            Trend #{shortId(item.trend_id)}
+          </span>
+          <Badge variant="ready" className="gap-1">
+            <Clock className="w-3 h-3" />
+            Generated {new Date(item.created_at).toLocaleDateString()}
+          </Badge>
         </div>
-      </header>
-      <GenerationResultPanel data={mockData} />
-    </article>
+      </CardHeader>
+      <Separator />
+      <div className="px-5 pb-5">
+        <GenerationResultPanel data={mockData} />
+      </div>
+    </Card>
   )
 }
 
@@ -326,10 +434,10 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [pipelineLoading, setPipelineLoading] = useState(false)
   const [error, setError] = useState(null)
-  
+
   const [statusFilter, setStatusFilter] = useState('pending_review')
   const [jwtToken, setJwtToken] = useState(localStorage.getItem('openpaws_jwt') || '')
-  const [currentView, setCurrentView] = useState('trends') // 'trends' or 'history'
+  const [currentView, setCurrentView] = useState('trends')
 
   useEffect(() => {
     localStorage.setItem('openpaws_jwt', jwtToken)
@@ -382,23 +490,20 @@ export default function App() {
     setPipelineLoading(true)
     setError(null)
     try {
-      // Step 1: Ingest (BlueSky -> Redis)
       const trigRes = await fetch('/api/v1/pipeline/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ trigger: 'ui', async_run: false })
       })
       if (!trigRes.ok) throw new Error(`Trigger failed: ${trigRes.statusText}`)
-      
-      // Step 2: Discover (Redis -> Supabase trends)
+
       const discRes = await fetch('/api/v1/pipeline/discover', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ drain: true })
       })
       if (!discRes.ok) throw new Error(`Discovery failed: ${discRes.statusText}`)
-      
-      // Refresh the view
+
       await loadTrends()
     } catch (e) {
       setError(e.message)
@@ -412,124 +517,186 @@ export default function App() {
     else if (currentView === 'history') loadHistory()
   }, [currentView, loadTrends, loadHistory])
 
+  const tabs = [
+    { id: 'trends', label: 'Trends' },
+    { id: 'history', label: 'My History' },
+  ]
+
   return (
-    <div className="app">
+    <div className="min-h-screen bg-background flex flex-col">
       {/* ── Header ── */}
-      <header className="app-header">
-        <div className="app-header__inner">
-          <div className="app-header__top-row">
-            <div className="app-header__brand">
-              <span className="app-header__paw">🐾</span>
-              <h1 className="app-header__title">OpenPaws TrendFinder</h1>
+      <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
+        <div className="max-w-6xl mx-auto px-6">
+          {/* Top row */}
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <img
+                src="/openpawslogo.png"
+                alt="OpenPaws"
+                className="h-7 w-auto"
+              />
+              <div>
+                <h1 className="text-sm font-semibold text-foreground tracking-tight">OpenPaws TrendFinder</h1>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Phase 6–10 Pipeline</p>
+              </div>
             </div>
-            <div className="app-header__auth">
-              <input 
-                type="password" 
-                placeholder="Paste Supabase JWT here" 
+            <div>
+              <input
+                type="password"
+                placeholder="Supabase JWT token"
                 value={jwtToken}
                 onChange={e => setJwtToken(e.target.value)}
                 title="Supabase Auth Token for RLS"
+                className="text-xs h-8 px-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-mono-data w-52"
               />
             </div>
           </div>
-          <p className="app-header__subtitle">Phase 6-10 · Human-in-the-Loop Pipeline</p>
-          
-          <div className="app-tabs">
-            <button className={`tab-btn ${currentView === 'trends' ? 'active' : ''}`} onClick={() => setCurrentView('trends')}>Trends</button>
-            <button className={`tab-btn ${currentView === 'history' ? 'active' : ''}`} onClick={() => setCurrentView('history')}>My History</button>
-          </div>
+
+          {/* Tabs */}
+          <nav className="flex gap-0 -mb-px">
+            {tabs.map(t => (
+              <button
+                key={t.id}
+                onClick={() => setCurrentView(t.id)}
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 ${
+                  currentView === t.id
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
         </div>
       </header>
 
       {/* ── Toolbar ── */}
       {currentView === 'trends' && (
-        <div className="toolbar">
-          <label htmlFor="status-filter" className="toolbar__label">Filter by status</label>
-          <select
-            id="status-filter"
-            className="toolbar__select"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          >
-            <option value="pending_review">Pending Review</option>
-            <option value="explainer_ready">Explainer Ready</option>
-            <option value="">All</option>
-          </select>
-          <button id="refresh-btn" className="toolbar__refresh" onClick={loadTrends} disabled={loading || pipelineLoading}>
-            ↺ Refresh
-          </button>
-          <button 
-            className="toolbar__refresh" 
-            onClick={handleTriggerPipeline} 
-            disabled={loading || pipelineLoading}
-            title="Manually trigger ingestion and discovery pipeline"
-            style={{ color: 'var(--green)', borderColor: 'var(--green)' }}
-          >
-            {pipelineLoading ? 'Running...' : '▶ Run Pipeline'}
-          </button>
-          {!loading && !error && (
-            <span className="toolbar__count">{count} trend{count !== 1 ? 's' : ''}</span>
-          )}
-        </div>
-      )}
-      
-      {currentView === 'history' && (
-        <div className="toolbar">
-          <button id="refresh-btn" className="toolbar__refresh" onClick={loadHistory}>
-            ↺ Refresh History
-          </button>
-          {!loading && !error && (
-            <span className="toolbar__count">{count} record{count !== 1 ? 's' : ''}</span>
-          )}
+        <div className="border-b border-border bg-background">
+          <div className="max-w-6xl mx-auto px-6 py-2.5 flex items-center gap-2.5 flex-wrap">
+            <label htmlFor="status-filter" className="text-xs text-muted-foreground font-medium">Status</label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="text-xs h-8 px-2.5 rounded-lg border border-border bg-secondary text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-sans cursor-pointer"
+            >
+              <option value="pending_review">Pending Review</option>
+              <option value="explainer_ready">Explainer Ready</option>
+              <option value="">All</option>
+            </select>
+
+            <Button
+              id="refresh-btn"
+              variant="outline"
+              size="sm"
+              onClick={loadTrends}
+              disabled={loading || pipelineLoading}
+              className="gap-1.5 h-8"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleTriggerPipeline}
+              disabled={loading || pipelineLoading}
+              title="Manually trigger ingestion and discovery pipeline"
+              className="gap-1.5 h-8 text-primary border-primary/30 hover:bg-primary/5"
+            >
+              <Play className="w-3.5 h-3.5" />
+              {pipelineLoading ? 'Running…' : 'Run Pipeline'}
+            </Button>
+
+            {!loading && !error && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {count} trend{count !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
-      {/* ── Main content ── */}
-      <main className="app-main">
+      {currentView === 'history' && (
+        <div className="border-b border-border bg-background">
+          <div className="max-w-6xl mx-auto px-6 py-2.5 flex items-center gap-2.5">
+            <Button
+              id="refresh-btn"
+              variant="outline"
+              size="sm"
+              onClick={loadHistory}
+              className="gap-1.5 h-8"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Refresh History
+            </Button>
+            {!loading && !error && (
+              <span className="ml-auto text-xs text-muted-foreground">
+                {count} record{count !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Main ── */}
+      <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
+
         {loading && (
-          <div className="state-box">
-            <span className="spinner spinner--lg" aria-label="Loading" />
-            <p>Loading…</p>
+          <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
+            <span className="spinner w-8 h-8" aria-label="Loading" style={{ borderWidth: 3 }} />
+            <p className="text-sm">Loading…</p>
           </div>
         )}
 
         {error && !loading && (
-          <div className="state-box state-box--error">
-            <p>⚠ Failed to load data</p>
-            <code>{error}</code>
-            <button className="btn-explain" onClick={currentView === 'trends' ? loadTrends : loadHistory}>Retry</button>
+          <div className="flex flex-col items-center justify-center py-24 gap-4">
+            <AlertTriangle className="w-8 h-8 text-destructive" />
+            <p className="text-sm text-destructive font-medium">Failed to load data</p>
+            <code className="text-xs text-muted-foreground bg-secondary px-3 py-2 rounded-lg font-mono-data max-w-lg text-center break-all">
+              {error}
+            </code>
+            <Button variant="outline" size="sm" onClick={currentView === 'trends' ? loadTrends : loadHistory}>
+              Try again
+            </Button>
           </div>
         )}
 
-        {/* Trends View */}
+        {/* Trends */}
         {currentView === 'trends' && !loading && !error && trends.length === 0 && (
-          <div className="state-box">
-            <p>No trends found for <strong>{statusFilter || 'all'}</strong> status.</p>
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+            <TrendingUp className="w-8 h-8 opacity-30" />
+            <p className="text-sm">No trends found for <strong>{statusFilter || 'all'}</strong> status.</p>
           </div>
         )}
 
         {currentView === 'trends' && !loading && !error && trends.length > 0 && (
-          <div className="trends-grid">
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {trends.map((trend) => (
               <TrendCard key={trend.trend_id} trend={trend} jwtToken={jwtToken} />
             ))}
           </div>
         )}
 
-        {/* History View */}
+        {/* History */}
         {currentView === 'history' && !loading && !error && history.length === 0 && (
-          <div className="state-box">
-            <p>No history found for your user. Generate some content first!</p>
+          <div className="flex flex-col items-center justify-center py-24 gap-3 text-muted-foreground">
+            <Heart className="w-8 h-8 opacity-30" />
+            <p className="text-sm">No history yet. Generate some content first!</p>
           </div>
         )}
 
         {currentView === 'history' && !loading && !error && history.length > 0 && (
-          <div className="history-grid">
+          <div className="flex flex-col gap-4">
             {history.map((item) => (
               <HistoryItem key={item.id} item={item} />
             ))}
           </div>
         )}
+
       </main>
     </div>
   )
