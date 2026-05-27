@@ -234,7 +234,7 @@ def _build_explainer_prompt(example_posts: list[dict[str, Any]]) -> str:
 		text = post.get("text") or post.get("body") or ""
 		community = post.get("community") or ""
 		score = post.get("score")
-		snippet = f"[Post {i}] r/{community} (score: {score})\n{title}"
+		snippet = f"[Post {i}] Community: {community} (score: {score})\n{title}"
 		if text and text != title:
 			snippet += f"\n{text[:300]}"
 		parts.append(snippet)

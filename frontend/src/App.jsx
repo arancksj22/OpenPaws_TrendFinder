@@ -6,7 +6,10 @@ const API_BASE = '/api/v1/trends'
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 function postLink(post) {
-  if (post.permalink) return `https://reddit.com${post.permalink}`
+  if (post.permalink) {
+    if (post.permalink.startsWith('http')) return post.permalink
+    return `https://reddit.com${post.permalink}`
+  }
   if (post.url) return post.url
   return null
 }
@@ -112,7 +115,7 @@ function TrendCard({ trend }) {
               const label = post.title || post.text || post.body || post.id
               return (
                 <li key={post.id} className="posts-list__item">
-                  <span className="posts-list__community">r/{post.community}</span>
+                  <span className="posts-list__community">{post.community}</span>
                   {link ? (
                     <a
                       className="posts-list__link"
