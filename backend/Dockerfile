@@ -1,4 +1,3 @@
-# TODO: Add container build instructions.
 # Stage 1: Builder stage to compile dependencies
 FROM python:3.12-slim AS builder
 
