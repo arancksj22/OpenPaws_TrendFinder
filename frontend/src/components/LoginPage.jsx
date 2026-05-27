@@ -47,10 +47,10 @@ export default function LoginPage({ onLogin }) {
         <div className="flex flex-col items-center pt-10 pb-6 px-8 border-b border-border">
           <img
             src="/openpawslogo.png"
-            alt="OpenPaws"
-            className="h-12 w-auto mb-4"
+            alt="Open Paws"
+            className="h-16 w-auto mb-4"
           />
-          <h1 className="text-lg font-semibold text-foreground tracking-tight">OpenPaws TrendFinder</h1>
+          <h1 className="text-lg font-semibold text-foreground tracking-tight">Open Paws TrendFinder</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Sign in to your account</p>
         </div>
 

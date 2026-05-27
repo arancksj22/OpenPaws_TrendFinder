@@ -13,8 +13,3 @@ html { scroll-behavior: smooth; }
   border-top-color: hsl(var(--primary));
   animation: spin 0.65s linear infinite;
 }
-
-/* Score bar fill animation (used via inline style) */
-.score-fill {
-  transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
-}

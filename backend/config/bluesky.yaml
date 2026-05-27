@@ -1,7 +1,7 @@
 defaults:
   sort: latest
-  post_limit: 300
-  reply_depth: 1
+  post_limit: 800
+  reply_depth: 0
   max_replies: 10
   request_delay_seconds: 1.0
 
@@ -24,4 +24,11 @@ hashtag_groups:
   - tags:
       - FactoryFarming
       - EndAnimalTesting
+    enabled: true
+  - tags:
+      - BanLiveExport
+      - WildlifeConservation
+      - AdoptDontShop
+      - CrueltyFree
+      - EndWhaling
     enabled: true

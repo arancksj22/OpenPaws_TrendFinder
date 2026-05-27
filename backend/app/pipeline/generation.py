@@ -346,18 +346,29 @@ def _generate_trend_image(
 		import urllib.parse
 		import urllib.request
 
-		hashtag_str = " ".join(f"#{t}" for t in brief.suggested_hashtags[:3])
+		import random
+		palettes = [
+			"vibrant cinematic lighting, highly aesthetic rich gradients",
+			"soft pastel colors, dreamy minimalist atmosphere",
+			"bold high-contrast duotone, modern editorial photography",
+			"warm golden hour lighting, natural organic feel, beautiful",
+			"deep moody shadows, neon accents, striking composition"
+		]
+		style = random.choice(palettes)
+
 		prompt = (
-			f"A striking and beautiful visual artwork or symbol representing the core theme of this topic: "
-			f"{brief.advocacy_brief[:200]} "
-			f"Style: highly aesthetic, visually engaging, suitable for a social media post, "
-			f"NO TEXT OR WORDS IN THE IMAGE."
+			f"A stunning, highly aesthetic visual artwork. No text, no words, no letters. "
+			f"Visual style: {style}. "
+			f"Subject: A beautiful, simplistic visual metaphor for: {brief.positioning_angle[:150]}"
 		)
 		
 		encoded_prompt = urllib.parse.quote(prompt)
 		url = f"https://image.pollinations.ai/prompt/{encoded_prompt}?width=1024&height=1024&nologo=true"
 
-		req = urllib.request.Request(url, headers={'User-Agent': 'OpenPaws'})
+		req = urllib.request.Request(
+			url, 
+			headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+		)
 		with urllib.request.urlopen(req, timeout=30) as response:
 			image_bytes = response.read()
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import './App.css'
 import LoginPage from './components/LoginPage'
 import { Button } from './components/ui/button'
@@ -76,8 +77,8 @@ function DraftCard({ draft, metrics }) {
   }
 
   return (
-    <div className={`rounded-xl border p-5 flex flex-col gap-4 transition-all duration-150
-      ${is_recommended ? 'border-primary/25 bg-primary/[0.02]' : 'border-border bg-card'}
+    <div className={`rounded-xl p-5 flex flex-col gap-4 transition-all duration-150
+      ${is_recommended ? 'border-2 border-emerald-400 bg-emerald-500/5 shadow-sm' : 'border border-border bg-card'}
       ${!passed_boundary_check ? 'opacity-60' : ''}
     `}>
       <div className="flex items-center justify-between">
@@ -285,7 +286,12 @@ function TrendCard({ trend, jwtToken }) {
               const link = postLink(post)
               const label = post.title || post.text || post.body || post.id
               return (
-                <li key={post.id} className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors group">
+                <motion.li
+                  key={post.id}
+                  whileHover={{ scale: 1.01 }}
+                  transition={{ duration: 0.2, ease: "easeOut" }}
+                  className="flex items-center gap-2 text-sm px-3 py-2 rounded-lg bg-secondary hover:bg-secondary/70 transition-colors group"
+                >
                   <span className="text-[11px] font-semibold text-muted-foreground w-20 shrink-0 truncate">
                     {post.community}
                   </span>
@@ -303,7 +309,7 @@ function TrendCard({ trend, jwtToken }) {
                     <span className="flex-1 text-muted-foreground truncate">{label}</span>
                   )}
                   <span className="text-[11px] font-mono-data text-muted-foreground shrink-0">↑{post.score ?? 0}</span>
-                </li>
+                </motion.li>
               )
             })}
           </ol>
@@ -349,9 +355,37 @@ function TrendCard({ trend, jwtToken }) {
 
       {/* Explainer & Generation */}
       {(explainer || generation) && (
-        <div className="px-5 pb-5">
-          <ExplainerPanel data={explainer} />
-          <GenerationResultPanel data={generation} />
+        <div className="px-5 pb-5 flex flex-col gap-0">
+          <AnimatePresence initial={false}>
+            {explainer && (
+              <motion.div
+                key="explainer"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="pt-2 pb-2">
+                  <ExplainerPanel data={explainer} />
+                </div>
+              </motion.div>
+            )}
+            {generation && (
+              <motion.div
+                key="generation"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
+                className="overflow-hidden"
+              >
+                <div className="pt-2">
+                  <GenerationResultPanel data={generation} />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </Card>
@@ -565,16 +599,16 @@ export default function App() {
             <div className="flex items-center gap-3.5">
               <img
                 src="/openpawslogo.png"
-                alt="OpenPaws"
-                className="h-8 w-auto"
+                alt="Open Paws"
+                className="h-10 w-auto"
               />
               <div>
-                <h1 className="text-base font-semibold text-foreground tracking-tight">OpenPaws TrendFinder</h1>
+                <h1 className="text-base font-semibold text-foreground tracking-tight">Open Paws TrendFinder</h1>
               </div>
             </div>
             <div className="flex items-center gap-3">
               {authUser?.email && (
-                <span className="text-sm font-medium text-foreground hidden sm:block">{authUser.email}</span>
+                <span className="text-xs text-muted-foreground hidden sm:block">{authUser.email}</span>
               )}
               <Button
                 variant="ghost"

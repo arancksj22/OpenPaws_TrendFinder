@@ -161,23 +161,45 @@ def _search_posts(
 	tags: list[str],
 	settings: IngestionDefaults,
 ) -> list[dict[str, Any]]:
-	"""Search Bluesky for posts matching the given hashtags."""
-	# Construct a relaxed OR query out of all tags in the group
+	"""Search Bluesky for posts matching the given hashtags, with pagination."""
 	query_str = " OR ".join(tags)
-	
-	response = client.app.bsky.feed.search_posts(
-		params={
+	posts: list[dict[str, Any]] = []
+	cursor: str | None = None
+	remaining = settings.post_limit
+
+	while remaining > 0:
+		batch_size = min(remaining, 100)  # Bluesky API hard cap per request
+		params: dict[str, Any] = {
 			"q": query_str,
 			"sort": settings.sort,
-			"limit": min(settings.post_limit, 100),
+			"limit": batch_size,
 		}
-	)
+		if cursor:
+			params["cursor"] = cursor
 
-	posts: list[dict[str, Any]] = []
-	for post_view in response.posts or []:
-		post = _extract_post(client, post_view, settings)
-		if post is not None:
-			posts.append(post)
+		try:
+			response = client.app.bsky.feed.search_posts(params=params)
+		except Exception as exc:
+			logger.warning("Bluesky search_posts error (stopping pagination): %s", exc)
+			break
+
+		page_posts = response.posts or []
+		if not page_posts:
+			break  # No more results
+
+		for post_view in page_posts:
+			post = _extract_post(client, post_view, settings)
+			if post is not None:
+				posts.append(post)
+
+		remaining -= len(page_posts)
+
+		# Stop if no cursor returned (last page)
+		cursor = getattr(response, "cursor", None)
+		if not cursor:
+			break
+
+		logger.debug("Bluesky pagination: fetched %d so far, cursor=%s", len(posts), cursor)
 
 	return posts
 

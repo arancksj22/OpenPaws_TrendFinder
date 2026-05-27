@@ -172,26 +172,28 @@ async def _run_discovery_pipeline(
 		raw_posts = await ingest_bluesky_posts(bluesky_config_path)
 		normalized_posts = normalize_bluesky_posts(raw_posts)
 
-		# Generate embeddings using Gemini
-		for post in normalized_posts:
-			text = post.get("text", "")
-			if not text:
-				post["embedding"] = [0.0] * 1024
-				continue
+		# Generate embeddings using Gemini in batches to avoid rate limits (15 RPM limit on free tier)
+		batch_size = 100
+		for i in range(0, len(normalized_posts), batch_size):
+			batch = normalized_posts[i:i + batch_size]
+			# Gemini embed_content does not allow empty strings, pad with a space
+			texts = [p.get("text", "") or " " for p in batch]
+			
 			try:
 				result = genai.embed_content(
-					model="models/text-embedding-004",
-					content=text,
+					model="models/gemini-embedding-2",
+					content=texts,
 					task_type="clustering"
 				)
-				vector = result['embedding']
-				# Pad 768-dim vector to 1024 to match DB schema
-				if len(vector) < 1024:
-					vector.extend([0.0] * (1024 - len(vector)))
-				post["embedding"] = vector[:1024]
+				embeddings = result['embedding']
+				for post, vector in zip(batch, embeddings):
+					if len(vector) < 1024:
+						vector.extend([0.0] * (1024 - len(vector)))
+					post["embedding"] = vector[:1024]
 			except Exception as e:
-				logger.warning("Failed to generate embedding for post: %s", e)
-				post["embedding"] = [0.0] * 1024
+				logger.warning("Failed to generate embedding batch: %s", e)
+				for post in batch:
+					post["embedding"] = [0.0] * 1024
 
 		queue = await RedisQueue.create(
 			RedisQueueConfig(stream_name=discovery_stream_name)
