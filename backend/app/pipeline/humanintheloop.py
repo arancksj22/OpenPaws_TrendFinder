@@ -14,6 +14,7 @@ from typing import Any
 
 import openai
 from supabase import Client, create_client
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
@@ -241,15 +242,15 @@ def _update_trend_explainer(
 _EXPLAINER_SYSTEM_PROMPT = (
 	"You are an animal rights advocacy analyst working for a nonprofit. "
 	"Your job is to evaluate social media trend clusters and explain their "
-	"relevance to animal welfare advocacy in concise, actionable language."
+	"relevance to animal welfare advocacy in concise, actionable language. "
+	"Your output MUST be strictly 2 sentences long. No lists, no bullet points, no line breaks."
 )
 
 _EXPLAINER_USER_TEMPLATE = (
 	"Given the following cluster of social media posts that form a trend, "
-	"write exactly a 2-line summary explaining:\n"
-	"1. What this trend is about\n"
-	"2. Why it is relevant to animal rights advocacy\n"
-	"3. Whether it represents an opportunity or a risk for advocacy content\n\n"
+	"write exactly a 2-sentence summary explaining what this trend is about, "
+	"why it is relevant to animal rights advocacy, and whether it represents "
+	"an opportunity or a risk for advocacy content.\n\n"
 	"Trend posts:\n{post_text}"
 )
 
@@ -276,6 +277,11 @@ def _build_explainer_prompt(example_posts: list[dict[str, Any]]) -> str:
 	return _EXPLAINER_USER_TEMPLATE.format(post_text=combined)
 
 
+@retry(
+	stop=stop_after_attempt(5),
+	wait=wait_exponential(multiplier=1, min=2, max=10),
+	retry=retry_if_exception_type(openai.RateLimitError)
+)
 def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
 	"""Call Cerebras Inference API and return the text response with token usage."""
 	api_key = config.cerebras_api_key or os.getenv("CEREBRAS_API_KEY")

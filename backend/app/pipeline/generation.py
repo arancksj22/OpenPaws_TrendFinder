@@ -26,6 +26,7 @@ from typing import Any
 
 from google import genai
 import openai
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 
 logger = logging.getLogger(__name__)
 
@@ -273,6 +274,11 @@ def _build_client(config: GenerationConfig) -> genai.Client:
 	return genai.Client(api_key=api_key)
 
 
+@retry(
+	stop=stop_after_attempt(5),
+	wait=wait_exponential(multiplier=1, min=2, max=10),
+	retry=retry_if_exception_type(openai.RateLimitError)
+)
 def _call(
 	config: GenerationConfig,
 	prompt: str,

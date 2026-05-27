@@ -15,7 +15,7 @@ _bearer = HTTPBearer(auto_error=False)
 @dataclass(frozen=True)
 class AuthContext:
 	user_id: str
-	token: str
+	token: str | None
 
 
 def get_auth_context(
@@ -49,6 +49,7 @@ def get_auth_context(
 		# For local testing, if the user pastes the raw secret or an invalid token,
 		# fallback to a dummy user instead of throwing a 401.
 		user_id = "local_test_user"
+		token = None
 
 	return AuthContext(user_id=str(user_id), token=token)
 

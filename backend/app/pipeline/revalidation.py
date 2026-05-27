@@ -362,7 +362,7 @@ def _score_via_local(
 	"""
 	try:
 		import torch
-		from transformers import AutoModel, AutoTokenizer
+		from transformers import AutoModelForSequenceClassification, AutoTokenizer
 	except ImportError as exc:
 		raise RuntimeError(
 			"torch and transformers are required for local scoring. "
@@ -373,7 +373,7 @@ def _score_via_local(
 
 	for metric, model_name in SCORING_MODELS.items():
 		try:
-			model, tokenizer = _load_model(model_name, config, AutoModel, AutoTokenizer)
+			model, tokenizer = _load_model(model_name, config, AutoModelForSequenceClassification, AutoTokenizer)
 			inputs = tokenizer(
 				text,
 				return_tensors="pt",
@@ -401,7 +401,7 @@ def _score_via_local(
 def _load_model(
 	model_name: str,
 	config: RevalidationConfig,
-	AutoModel: Any,
+	AutoModelClass: Any,
 	AutoTokenizer: Any,
 ) -> tuple[Any, Any]:
 	"""Return (model, tokenizer) from cache, downloading on first access."""
@@ -414,7 +414,7 @@ def _load_model(
 		kwargs["cache_dir"] = config.cache_dir
 
 	tokenizer = AutoTokenizer.from_pretrained(model_name, **kwargs)
-	model = AutoModel.from_pretrained(model_name, **kwargs)
+	model = AutoModelClass.from_pretrained(model_name, **kwargs)
 	model.to(config.device)
 	model.eval()
 
