@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from google import genai
+import openai
 
 logger = logging.getLogger(__name__)
 
@@ -40,14 +41,15 @@ BLUESKY_MAX_CHARS = 300
 @dataclass(frozen=True)
 class GenerationConfig:
 	gemini_api_key: str | None = None
+	cerebras_api_key: str | None = None
 	# Flash model for all calls — cheap and fast.
-	brief_model: str = "gemini-2.0-flash"
-	draft_model: str = "gemini-2.0-flash"
+	brief_model: str = "llama3.1-8b"
+	draft_model: str = "llama3.1-8b"
 	# Imagen fast model for the single infographic image.
-	image_model: str = "imagen-3.0-fast-generate-001"
+	image_model: str = "imagen-4.0-fast-generate-001"
 	image_prompt_max_chars: int = 900
 	# Token budgets
-	brief_max_tokens: int = 512
+	brief_max_tokens: int = 1024
 	draft_max_tokens: int = 150
 	# Temperature: low for brief (factual), slightly higher for creative drafts.
 	brief_temperature: float = 0.3
@@ -215,8 +217,8 @@ def generate_content(
 		explainer=explainer,
 		post_snippets=post_snippets,
 	)
-	brief_raw = _call(client, brief_prompt, _BRIEF_SYSTEM, config.brief_model,
-	                  config.brief_max_tokens, config.brief_temperature)
+	brief_raw = _call(config, brief_prompt, _BRIEF_SYSTEM, config.brief_model,
+	                  config.brief_max_tokens, config.brief_temperature, "application/json")
 	brief = _parse_brief(brief_raw)
 
 	# ── Calls 2-4: three draft posts ───────────────────────────────────────
@@ -228,7 +230,7 @@ def generate_content(
 			positioning_angle=brief.positioning_angle,
 			hashtags=hashtag_str,
 		)
-		raw = _call(client, prompt, _DRAFT_SYSTEM, config.draft_model,
+		raw = _call(config, prompt, _DRAFT_SYSTEM, config.draft_model,
 		            config.draft_max_tokens, config.draft_temperature)
 		draft = _build_draft(raw["text"], tone, raw)
 		draft_posts.append(draft)
@@ -272,32 +274,45 @@ def _build_client(config: GenerationConfig) -> genai.Client:
 
 
 def _call(
-	client: genai.Client,
+	config: GenerationConfig,
 	prompt: str,
 	system: str,
 	model: str,
 	max_tokens: int,
 	temperature: float,
+	response_mime_type: str | None = None,
 ) -> dict[str, Any]:
-	"""Make a single Gemini content-generation call.
+	"""Make a single content-generation call using Cerebras.
 
 	Returns a dict with keys ``text``, ``prompt_tokens``, ``completion_tokens``.
 	"""
-	response = client.models.generate_content(
-		model=model,
-		contents=prompt,
-		config=genai.types.GenerateContentConfig(
-			system_instruction=system,
-			max_output_tokens=max_tokens,
-			temperature=temperature,
-		),
+	api_key = config.cerebras_api_key or os.getenv("CEREBRAS_API_KEY")
+	if not api_key:
+		raise RuntimeError("Missing CEREBRAS_API_KEY")
+
+	client = openai.OpenAI(
+		base_url="https://api.cerebras.ai/v1",
+		api_key=api_key
 	)
-	text = response.text or ""
-	prompt_tokens: int | None = None
-	completion_tokens: int | None = None
-	if response.usage_metadata:
-		prompt_tokens = response.usage_metadata.prompt_token_count
-		completion_tokens = response.usage_metadata.candidates_token_count
+
+	kwargs = {}
+	if response_mime_type == "application/json":
+		kwargs["response_format"] = {"type": "json_object"}
+
+	response = client.chat.completions.create(
+		model=model,
+		messages=[
+			{"role": "system", "content": system},
+			{"role": "user", "content": prompt}
+		],
+		max_tokens=max_tokens,
+		temperature=temperature,
+		**kwargs
+	)
+
+	text = response.choices[0].message.content or ""
+	prompt_tokens = response.usage.prompt_tokens if response.usage else None
+	completion_tokens = response.usage.completion_tokens if response.usage else None
 
 	return {
 		"text": text,

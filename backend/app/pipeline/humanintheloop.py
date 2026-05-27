@@ -12,7 +12,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
-from google import genai
+import openai
 from supabase import Client, create_client
 
 logger = logging.getLogger(__name__)
@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 class HumanInTheLoopConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
-	gemini_api_key: str | None = None
-	gemini_model: str = "gemini-2.5-flash"
+	cerebras_api_key: str | None = None
+	text_model: str = "llama3.1-8b"
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
 	posts_table: str = "posts"
@@ -114,14 +114,14 @@ def generate_explainer(
 	# 2. Fetch example posts.
 	example_posts = _fetch_example_posts(client, trend_id, config)
 
-	# 3. Build prompt and call Gemini.
+	# 3. Build prompt and call Cerebras.
 	prompt = _build_explainer_prompt(example_posts)
-	gemini_result = _call_gemini(prompt, config)
+	cerebras_result = _call_cerebras(prompt, config)
 
-	explainer_text = gemini_result["text"]
-	model_used = gemini_result["model"]
-	prompt_tokens = gemini_result.get("prompt_tokens")
-	completion_tokens = gemini_result.get("completion_tokens")
+	explainer_text = cerebras_result["text"]
+	model_used = cerebras_result["model"]
+	prompt_tokens = cerebras_result.get("prompt_tokens")
+	completion_tokens = cerebras_result.get("completion_tokens")
 
 	# 4. Write explainer back to Supabase and update status.
 	_update_trend_explainer(client, trend_id, explainer_text, config)
@@ -246,7 +246,7 @@ _EXPLAINER_SYSTEM_PROMPT = (
 
 _EXPLAINER_USER_TEMPLATE = (
 	"Given the following cluster of social media posts that form a trend, "
-	"write a 2-3 sentence summary explaining:\n"
+	"write exactly a 2-line summary explaining:\n"
 	"1. What this trend is about\n"
 	"2. Why it is relevant to animal rights advocacy\n"
 	"3. Whether it represents an opportunity or a risk for advocacy content\n\n"
@@ -276,37 +276,34 @@ def _build_explainer_prompt(example_posts: list[dict[str, Any]]) -> str:
 	return _EXPLAINER_USER_TEMPLATE.format(post_text=combined)
 
 
-def _call_gemini(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
-	"""Call Gemini 2.5 Flash and return the text response with token usage."""
-	api_key = config.gemini_api_key or os.getenv("GEMINI_API_KEY")
+def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
+	"""Call Cerebras Inference API and return the text response with token usage."""
+	api_key = config.cerebras_api_key or os.getenv("CEREBRAS_API_KEY")
 	if not api_key:
-		raise RuntimeError("Missing GEMINI_API_KEY")
+		raise RuntimeError("Missing CEREBRAS_API_KEY")
 
-	client = genai.Client(api_key=api_key)
-
-	response = client.models.generate_content(
-		model=config.gemini_model,
-		contents=prompt,
-		config=genai.types.GenerateContentConfig(
-			system_instruction=_EXPLAINER_SYSTEM_PROMPT,
-			max_output_tokens=config.max_explainer_tokens,
-			temperature=0.3,
-		),
+	client = openai.OpenAI(
+		base_url="https://api.cerebras.ai/v1",
+		api_key=api_key
 	)
 
-	# Extract text.
-	text = response.text or ""
+	response = client.chat.completions.create(
+		model=config.text_model,
+		messages=[
+			{"role": "system", "content": _EXPLAINER_SYSTEM_PROMPT},
+			{"role": "user", "content": prompt}
+		],
+		max_tokens=config.max_explainer_tokens,
+		temperature=0.3,
+	)
 
-	# Extract token usage from response metadata.
-	prompt_tokens = None
-	completion_tokens = None
-	if response.usage_metadata:
-		prompt_tokens = response.usage_metadata.prompt_token_count
-		completion_tokens = response.usage_metadata.candidates_token_count
+	text = response.choices[0].message.content or ""
+	prompt_tokens = response.usage.prompt_tokens if response.usage else None
+	completion_tokens = response.usage.completion_tokens if response.usage else None
 
 	return {
 		"text": text,
-		"model": config.gemini_model,
+		"model": config.text_model,
 		"prompt_tokens": prompt_tokens,
 		"completion_tokens": completion_tokens,
 	}

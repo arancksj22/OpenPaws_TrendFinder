@@ -164,7 +164,8 @@ def _search_posts(
 	"""Search Bluesky for posts matching the given hashtags."""
 	response = client.app.bsky.feed.search_posts(
 		params={
-			"q": " OR ".join(tags),
+			"q": tags[0],
+			"tag": tags,
 			"sort": settings.sort,
 			"limit": min(settings.post_limit, 100),
 		}
