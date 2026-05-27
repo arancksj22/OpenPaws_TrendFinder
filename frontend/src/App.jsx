@@ -100,10 +100,6 @@ function GenerationResultPanel({ data }) {
     <div className="gen-panel">
       <h4 className="gen-panel__title">✦ Generated Content</h4>
       
-      <div className="gen-panel__brief">
-        <h5>Advocacy Brief</h5>
-        <p>{gen.advocacy_brief || (gen.scored_drafts ? 'See drafts below.' : 'No brief provided.')}</p>
-      </div>
 
       {storage?.image_url && (
         <div className="gen-panel__image">
@@ -296,7 +292,6 @@ function HistoryItem({ item }) {
         // Mocking score meta since it's not stored in the DB directly, or we can just reconstruct it
         metrics: [
           { key: "advocacy_preference", label: "Advocacy Preference" },
-          { key: "text_performance", label: "Text Performance" },
           { key: "potential_influence", label: "Potential Influence" },
           { key: "emotional_impact", label: "Emotional Impact" },
           { key: "animal_alignment", label: "Animal Alignment" },

@@ -17,7 +17,7 @@ class ClusteringConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
 	embedding_dim: int = 1024
-	match_threshold: float = 0.85
+	match_threshold: float = 0.70
 	match_count: int = 50
 	top_k: int = 5
 	posts_table: str = "posts"

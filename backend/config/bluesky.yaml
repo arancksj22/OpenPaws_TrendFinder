@@ -1,6 +1,6 @@
 defaults:
   sort: latest
-  post_limit: 50
+  post_limit: 100
   reply_depth: 1
   max_replies: 10
   request_delay_seconds: 1.0

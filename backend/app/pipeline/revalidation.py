@@ -51,7 +51,6 @@ BLUESKY_MAX_CHARS = 300
 
 SCORING_MODELS: dict[str, str] = {
 	"advocacy_preference":   "open-paws/animal_advocate_preference_prediction_shortform",
-	"text_performance":      "open-paws/text_performance_prediction_shortform",
 	"potential_influence":   "open-paws/potential_influence_prediction_shortform",
 	"emotional_impact":      "open-paws/emotional_impact_prediction_shortform",
 	"animal_alignment":      "open-paws/animal_alignment_prediction_shortform",
@@ -59,11 +58,10 @@ SCORING_MODELS: dict[str, str] = {
 
 # Weights used to compute the composite score (must sum to 1.0).
 _WEIGHTS: dict[str, float] = {
-	"advocacy_preference":  0.25,
-	"text_performance":     0.20,
-	"potential_influence":  0.20,
-	"emotional_impact":     0.20,
-	"animal_alignment":     0.15,
+	"advocacy_preference":  0.30,
+	"potential_influence":  0.25,
+	"emotional_impact":     0.25,
+	"animal_alignment":     0.20,
 }
 
 # Process-level cache: model_name → (model, tokenizer)
@@ -116,14 +114,13 @@ class RevalidationConfig:
 
 @dataclass
 class PostScores:
-	"""Five individual model scores plus a weighted composite for one draft post."""
+	"""Four individual model scores plus a weighted composite for one draft post."""
 
 	advocacy_preference: float   # open-paws/animal_advocate_preference_prediction_shortform
-	text_performance: float      # open-paws/text_performance_prediction_shortform
 	potential_influence: float   # open-paws/potential_influence_prediction_shortform
 	emotional_impact: float      # open-paws/emotional_impact_prediction_shortform
 	animal_alignment: float      # open-paws/animal_alignment_prediction_shortform
-	composite: float             # weighted average of the above five
+	composite: float             # weighted average of the above four
 
 
 @dataclass
@@ -266,7 +263,6 @@ def _build_post_scores(raw: dict[str, float]) -> PostScores:
 	)
 	return PostScores(
 		advocacy_preference=raw.get("advocacy_preference", 0.0),
-		text_performance=raw.get("text_performance", 0.0),
 		potential_influence=raw.get("potential_influence", 0.0),
 		emotional_impact=raw.get("emotional_impact", 0.0),
 		animal_alignment=raw.get("animal_alignment", 0.0),
@@ -277,7 +273,6 @@ def _build_post_scores(raw: dict[str, float]) -> PostScores:
 def _zero_scores() -> PostScores:
 	return PostScores(
 		advocacy_preference=0.0,
-		text_performance=0.0,
 		potential_influence=0.0,
 		emotional_impact=0.0,
 		animal_alignment=0.0,
@@ -453,7 +448,6 @@ def _pick_recommended(scored_drafts: list[ScoredDraft]) -> int:
 # Human-readable labels for each scoring metric.
 _SCORE_LABELS: dict[str, str] = {
 	"advocacy_preference": "Advocacy Preference",
-	"text_performance":    "Text Performance",
 	"potential_influence": "Potential Influence",
 	"emotional_impact":    "Emotional Impact",
 	"animal_alignment":    "Animal Alignment",
@@ -498,7 +492,6 @@ def serialise_result(result: RevalidationResult) -> dict[str, Any]:
 	          "is_recommended": false,
 	          "scores": {
 	            "advocacy_preference": 0.82,
-	            "text_performance":    0.75,
 	            "potential_influence": 0.68,
 	            "emotional_impact":    0.61,
 	            "animal_alignment":    0.91,
@@ -534,7 +527,6 @@ def serialise_result(result: RevalidationResult) -> dict[str, Any]:
 				"is_recommended":        i == result.recommended_index,
 				"scores": {
 					"advocacy_preference": sd.scores.advocacy_preference,
-					"text_performance":    sd.scores.text_performance,
 					"potential_influence": sd.scores.potential_influence,
 					"emotional_impact":    sd.scores.emotional_impact,
 					"animal_alignment":    sd.scores.animal_alignment,
