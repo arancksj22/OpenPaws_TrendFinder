@@ -127,8 +127,8 @@ async def ingest_bluesky_posts(
 				seen_uris.add(uri)
 				results.append(post)
 		except Exception as exc:
-			logger.warning(
-				"Bluesky search error for tags %s: %s", source.tags, exc,
+			logger.exception(
+				"Bluesky search error for tags %s", source.tags
 			)
 
 		await _safe_sleep(defaults.request_delay_seconds)
@@ -164,8 +164,7 @@ def _search_posts(
 	"""Search Bluesky for posts matching the given hashtags."""
 	response = client.app.bsky.feed.search_posts(
 		params={
-			"q": "*",
-			"tag": tags,
+			"q": " OR ".join(tags),
 			"sort": settings.sort,
 			"limit": min(settings.post_limit, 100),
 		}

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 import redis.asyncio as redis
@@ -16,9 +16,25 @@ class QueueMessage:
 	payload: dict[str, Any]
 
 
+import os
+
+def _get_redis_url() -> str:
+	if url := os.getenv("REDIS_URL"):
+		return url
+	
+	# Fallback to Upstash REST URL conversion if present
+	rest_url = os.getenv("UPSTASH_REDIS_REST_URL")
+	rest_token = os.getenv("UPSTASH_REDIS_REST_TOKEN")
+	if rest_url and rest_token:
+		domain = rest_url.replace("https://", "").replace("http://", "").strip().strip('"')
+		token = rest_token.strip().strip('"')
+		return f"rediss://default:{token}@{domain}:6379"
+		
+	return "redis://localhost:6379/0"
+
 @dataclass(frozen=True)
 class RedisQueueConfig:
-	url: str = "redis://localhost:6379/0"
+	url: str = field(default_factory=_get_redis_url)
 	stream_name: str = "trendfinder:queue"
 	group_name: str = "trendfinder"
 	consumer_name: str = "worker-1"
@@ -40,7 +56,7 @@ class RedisQueue:
 
 	async def enqueue(self, payload: dict[str, Any]) -> str:
 		data = {"payload": _serialize_payload(payload)}
-		kwargs: dict[str, Any] = {"stream": self._config.stream_name, "fields": data}
+		kwargs: dict[str, Any] = {"name": self._config.stream_name, "fields": data}
 		if self._config.max_len is not None:
 			kwargs["maxlen"] = self._config.max_len
 			kwargs["approximate"] = True

@@ -1,8 +1,8 @@
 defaults:
   sort: latest
-  post_limit: 15
+  post_limit: 50
   reply_depth: 1
-  max_replies: 5
+  max_replies: 10
   request_delay_seconds: 1.0
 
 # Edit this list freely; omit the '#' prefix from tag names.
@@ -24,4 +24,4 @@ hashtag_groups:
   - tags:
       - FactoryFarming
       - EndAnimalTesting
-    enabled: false
+    enabled: true

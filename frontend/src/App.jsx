@@ -329,6 +329,7 @@ export default function App() {
   const [history, setHistory] = useState([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [pipelineLoading, setPipelineLoading] = useState(false)
   const [error, setError] = useState(null)
   
   const [statusFilter, setStatusFilter] = useState('pending_review')
@@ -382,6 +383,35 @@ export default function App() {
     }
   }, [getHeaders])
 
+  const handleTriggerPipeline = useCallback(async () => {
+    setPipelineLoading(true)
+    setError(null)
+    try {
+      // Step 1: Ingest (BlueSky -> Redis)
+      const trigRes = await fetch('/api/v1/pipeline/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
+        body: JSON.stringify({ trigger: 'ui', async_run: false })
+      })
+      if (!trigRes.ok) throw new Error(`Trigger failed: ${trigRes.statusText}`)
+      
+      // Step 2: Discover (Redis -> Supabase trends)
+      const discRes = await fetch('/api/v1/pipeline/discover', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getHeaders() },
+        body: JSON.stringify({ drain: true })
+      })
+      if (!discRes.ok) throw new Error(`Discovery failed: ${discRes.statusText}`)
+      
+      // Refresh the view
+      await loadTrends()
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setPipelineLoading(false)
+    }
+  }, [getHeaders, loadTrends])
+
   useEffect(() => {
     if (currentView === 'trends') loadTrends()
     else if (currentView === 'history') loadHistory()
@@ -430,8 +460,17 @@ export default function App() {
             <option value="explainer_ready">Explainer Ready</option>
             <option value="">All</option>
           </select>
-          <button id="refresh-btn" className="toolbar__refresh" onClick={loadTrends}>
+          <button id="refresh-btn" className="toolbar__refresh" onClick={loadTrends} disabled={loading || pipelineLoading}>
             ↺ Refresh
+          </button>
+          <button 
+            className="toolbar__refresh" 
+            onClick={handleTriggerPipeline} 
+            disabled={loading || pipelineLoading}
+            title="Manually trigger ingestion and discovery pipeline"
+            style={{ color: 'var(--green)', borderColor: 'var(--green)' }}
+          >
+            {pipelineLoading ? 'Running...' : '▶ Run Pipeline'}
           </button>
           {!loading && !error && (
             <span className="toolbar__count">{count} trend{count !== 1 ? 's' : ''}</span>
