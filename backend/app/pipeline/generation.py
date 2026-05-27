@@ -43,6 +43,9 @@ class GenerationConfig:
 	# Flash model for all calls — cheap and fast.
 	brief_model: str = "gemini-2.0-flash"
 	draft_model: str = "gemini-2.0-flash"
+	# Imagen fast model for the single infographic image.
+	image_model: str = "imagen-3.0-fast-generate-001"
+	image_prompt_max_chars: int = 900
 	# Token budgets
 	brief_max_tokens: int = 512
 	draft_max_tokens: int = 150
@@ -88,6 +91,9 @@ class GenerationResult:
 	draft_posts: list[DraftPost]   # always length 3
 	total_prompt_tokens: int
 	total_completion_tokens: int
+	# Imagen output — None if image generation was skipped or failed.
+	image_bytes: bytes | None = None
+	image_prompt_used: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -227,6 +233,13 @@ def generate_content(
 		draft = _build_draft(raw["text"], tone, raw)
 		draft_posts.append(draft)
 
+	# ── Call 5: one infographic image via Imagen fast ─────────────────────
+	image_bytes, image_prompt_used = _generate_trend_image(
+		brief=brief,
+		client=client,
+		config=config,
+	)
+
 	# ── Aggregate token usage ──────────────────────────────────────────────
 	total_prompt = _sum_tokens(
 		[brief.prompt_tokens] + [d.prompt_tokens for d in draft_posts]
@@ -241,6 +254,8 @@ def generate_content(
 		draft_posts=draft_posts,
 		total_prompt_tokens=total_prompt,
 		total_completion_tokens=total_completion,
+		image_bytes=image_bytes,
+		image_prompt_used=image_prompt_used,
 	)
 
 
@@ -289,6 +304,50 @@ def _call(
 		"prompt_tokens": prompt_tokens,
 		"completion_tokens": completion_tokens,
 	}
+
+
+def _generate_trend_image(
+	brief: ContentBrief,
+	client: genai.Client,
+	config: GenerationConfig,
+) -> tuple[bytes | None, str | None]:
+	"""Call Imagen 3 Fast to generate one infographic-style PNG for the trend.
+
+	Returns ``(image_bytes, prompt_used)`` on success, or ``(None, None)``
+	if image generation fails (non-fatal — pipeline continues).
+	"""
+	try:
+		from google.genai import types as genai_types
+
+		hashtag_str = " ".join(f"#{t}" for t in brief.suggested_hashtags[:3])
+		prompt = (
+			f"Create a clean, modern infographic for an animal rights advocacy "
+			f"social media post. Topic: {brief.advocacy_brief[:400]} "
+			f"Angle: {brief.positioning_angle[:200]} "
+			f"Visual style: flat design, warm earthy tones, bold typography, "
+			f"no text overlays, suitable for Bluesky. "
+			f"Hashtags context: {hashtag_str}"
+		)
+		prompt = prompt[:config.image_prompt_max_chars]
+
+		response = client.models.generate_images(
+			model=config.image_model,
+			prompt=prompt,
+			config=genai_types.GenerateImagesConfig(
+				number_of_images=1,
+				aspect_ratio="1:1",
+				safety_filter_level="BLOCK_MEDIUM_AND_ABOVE",
+			),
+		)
+		if response.generated_images:
+			image_bytes = response.generated_images[0].image.image_bytes
+			logger.info("Imagen image generated (%d bytes)", len(image_bytes))
+			return image_bytes, prompt
+		logger.warning("Imagen returned no images")
+		return None, None
+	except Exception:
+		logger.exception("Image generation failed (non-fatal); continuing without image")
+		return None, None
 
 
 # ---------------------------------------------------------------------------
