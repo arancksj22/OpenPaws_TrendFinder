@@ -135,6 +135,36 @@ def generate_explainer(
 	}
 
 
+def build_trend_payload(
+	trend_id: str,
+	config: HumanInTheLoopConfig | None = None,
+	*,
+	ensure_explainer: bool = True,
+) -> dict[str, Any]:
+	"""Return a Phase 6 payload for downstream phases.
+
+	Payload keys: ``trend_id``, ``explainer``, ``example_posts``.
+	"""
+	config = config or HumanInTheLoopConfig()
+	client = _create_supabase_client(config)
+
+	trend_row = _fetch_trend_by_id(client, trend_id, config)
+	if trend_row is None:
+		raise ValueError(f"Trend not found: {trend_id}")
+
+	explainer = trend_row.get("explainer")
+	if ensure_explainer and not explainer:
+		result = generate_explainer(trend_id=trend_id, config=config)
+		explainer = result.get("explainer")
+
+	example_posts = _fetch_example_posts(client, trend_id, config)
+	return {
+		"trend_id": trend_id,
+		"explainer": explainer or "",
+		"example_posts": example_posts,
+	}
+
+
 # ---------------------------------------------------------------------------
 # Supabase helpers
 # ---------------------------------------------------------------------------
