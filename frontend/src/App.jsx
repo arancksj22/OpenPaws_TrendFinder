@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import './App.css'
 
 const API_BASE = '/api/v1/trends'
+const HISTORY_API = '/api/v1/history'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -25,6 +26,99 @@ function statusBadge(status) {
   }
   const s = map[status] || { label: status ?? 'unknown', cls: 'badge badge--unknown' }
   return <span className={s.cls}>{s.label}</span>
+}
+
+// ─── ScoreBar ────────────────────────────────────────────────────────────────
+
+function ScoreBar({ label, value, weight, isComposite }) {
+  const pct = Math.max(0, Math.min(100, value * 100))
+  const color = isComposite ? 'var(--accent)' : 'var(--green)'
+  return (
+    <div className={`score-bar ${isComposite ? 'score-bar--composite' : ''}`}>
+      <div className="score-bar__info">
+        <span className="score-bar__label" title={weight ? `Weight: ${weight * 100}%` : ''}>
+          {label}
+        </span>
+        <span className="score-bar__value">{(value * 100).toFixed(1)}%</span>
+      </div>
+      <div className="score-bar__track">
+        <div className="score-bar__fill" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  )
+}
+
+// ─── DraftCard ───────────────────────────────────────────────────────────────
+
+function DraftCard({ draft, metrics }) {
+  const { tone, text, char_count, hashtags, passed_boundary_check, boundary_issues, is_recommended, scores } = draft
+  
+  return (
+    <div className={`draft-card ${is_recommended ? 'draft-card--recommended' : ''} ${!passed_boundary_check ? 'draft-card--failed' : ''}`}>
+      <div className="draft-card__header">
+        <span className="draft-card__tone">{tone}</span>
+        {is_recommended && <span className="badge badge--ready">★ Recommended</span>}
+        {!passed_boundary_check && <span className="badge badge--pending">⚠ Boundary Failed</span>}
+      </div>
+      
+      {!passed_boundary_check && boundary_issues?.length > 0 && (
+        <div className="draft-card__issues">
+          {boundary_issues.map((i, idx) => <div key={idx}>• {i}</div>)}
+        </div>
+      )}
+
+      <p className="draft-card__text">{text}</p>
+      
+      <div className="draft-card__meta">
+        <span>{char_count}/300 chars</span>
+        {hashtags?.length > 0 && <span>· {hashtags.map(h => `#${h}`).join(' ')}</span>}
+      </div>
+
+      <div className="draft-card__scores">
+        <ScoreBar label="Composite Score" value={scores.composite} isComposite={true} />
+        <details className="draft-card__scores-details">
+          <summary>View individual metrics</summary>
+          <div className="draft-card__metrics-grid">
+            {metrics.map(m => (
+              <ScoreBar key={m.key} label={m.label} value={scores[m.key]} weight={m.weight} />
+            ))}
+          </div>
+        </details>
+      </div>
+    </div>
+  )
+}
+
+// ─── GenerationResultPanel ───────────────────────────────────────────────────
+
+function GenerationResultPanel({ data }) {
+  if (!data || !data.generation) return null
+  const gen = data.generation
+  const storage = data.storage
+
+  return (
+    <div className="gen-panel">
+      <h4 className="gen-panel__title">✦ Generated Content</h4>
+      
+      <div className="gen-panel__brief">
+        <h5>Advocacy Brief</h5>
+        <p>{gen.advocacy_brief || (gen.scored_drafts ? 'See drafts below.' : 'No brief provided.')}</p>
+      </div>
+
+      {storage?.image_url && (
+        <div className="gen-panel__image">
+          <img src={storage.image_url} alt="Generated infographic" loading="lazy" />
+        </div>
+      )}
+
+      <div className="gen-panel__drafts">
+        <h5>Scored Drafts</h5>
+        {gen.scored_drafts?.map(draft => (
+          <DraftCard key={draft.index} draft={draft} metrics={gen.score_meta.metrics} />
+        ))}
+      </div>
+    </div>
+  )
 }
 
 // ─── ExplainerPanel ──────────────────────────────────────────────────────────
@@ -51,8 +145,9 @@ function ExplainerPanel({ data }) {
 
 // ─── TrendCard ───────────────────────────────────────────────────────────────
 
-function TrendCard({ trend }) {
+function TrendCard({ trend, jwtToken }) {
   const [loading, setLoading] = useState(false)
+  const [genLoading, setGenLoading] = useState(false)
   const [explainer, setExplainer] = useState(
     trend.explainer
       ? {
@@ -64,7 +159,14 @@ function TrendCard({ trend }) {
         }
       : null
   )
+  const [generation, setGeneration] = useState(null)
   const [error, setError] = useState(null)
+
+  const getHeaders = () => {
+    const h = { 'Content-Type': 'application/json' }
+    if (jwtToken) h['Authorization'] = `Bearer ${jwtToken}`
+    return h
+  }
 
   const handleExplain = useCallback(async () => {
     setLoading(true)
@@ -72,6 +174,7 @@ function TrendCard({ trend }) {
     try {
       const res = await fetch(`${API_BASE}/${trend.trend_id}/explainer`, {
         method: 'POST',
+        headers: getHeaders()
       })
       if (!res.ok) {
         const body = await res.text()
@@ -84,7 +187,28 @@ function TrendCard({ trend }) {
     } finally {
       setLoading(false)
     }
-  }, [trend.trend_id])
+  }, [trend.trend_id, jwtToken])
+
+  const handleGenerate = useCallback(async () => {
+    setGenLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/${trend.trend_id}/generate`, {
+        method: 'POST',
+        headers: getHeaders()
+      })
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`${res.status} ${res.statusText}: ${body}`)
+      }
+      const data = await res.json()
+      setGeneration(data)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setGenLoading(false)
+    }
+  }, [trend.trend_id, jwtToken])
 
   const examplePosts = trend.example_posts?.slice(0, 5) ?? []
 
@@ -138,21 +262,62 @@ function TrendCard({ trend }) {
 
       <footer className="trend-card__footer">
         <button
-          id={`explain-btn-${trend.trend_id}`}
           className="btn-explain"
           onClick={handleExplain}
-          disabled={loading}
+          disabled={loading || genLoading}
         >
-          {loading ? (
-            <span className="spinner" aria-label="Loading" />
-          ) : (
-            '✦ Explain'
-          )}
+          {loading ? <span className="spinner" aria-label="Loading" /> : '✦ Explain'}
+        </button>
+        <button
+          className="btn-generate"
+          onClick={handleGenerate}
+          disabled={loading || genLoading}
+          title="Run Phase 7-10 Pipeline"
+        >
+          {genLoading ? <span className="spinner" aria-label="Generating" /> : '✦ Generate'}
         </button>
         {error && <p className="trend-card__error">⚠ {error}</p>}
       </footer>
 
       <ExplainerPanel data={explainer} />
+      <GenerationResultPanel data={generation} />
+    </article>
+  )
+}
+
+// ─── HistoryItem ─────────────────────────────────────────────────────────────
+
+function HistoryItem({ item }) {
+  // Format the DB record to look like the generation API response so we can reuse GenerationResultPanel
+  const mockData = {
+    generation: {
+      advocacy_brief: item.advocacy_brief,
+      score_meta: {
+        // Mocking score meta since it's not stored in the DB directly, or we can just reconstruct it
+        metrics: [
+          { key: "advocacy_preference", label: "Advocacy Preference" },
+          { key: "text_performance", label: "Text Performance" },
+          { key: "potential_influence", label: "Potential Influence" },
+          { key: "emotional_impact", label: "Emotional Impact" },
+          { key: "animal_alignment", label: "Animal Alignment" },
+        ]
+      },
+      scored_drafts: item.scored_drafts,
+    },
+    storage: {
+      image_url: item.image_url
+    }
+  }
+
+  return (
+    <article className="trend-card history-item">
+      <header className="trend-card__header">
+        <div className="trend-card__title-row">
+          <span className="trend-card__id">Trend #{shortId(item.trend_id)}</span>
+          <span className="badge badge--ready">Generated {new Date(item.created_at).toLocaleDateString()}</span>
+        </div>
+      </header>
+      <GenerationResultPanel data={mockData} />
     </article>
   )
 }
@@ -161,10 +326,24 @@ function TrendCard({ trend }) {
 
 export default function App() {
   const [trends, setTrends] = useState([])
+  const [history, setHistory] = useState([])
   const [count, setCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  
   const [statusFilter, setStatusFilter] = useState('pending_review')
+  const [jwtToken, setJwtToken] = useState(localStorage.getItem('openpaws_jwt') || '')
+  const [currentView, setCurrentView] = useState('trends') // 'trends' or 'history'
+
+  useEffect(() => {
+    localStorage.setItem('openpaws_jwt', jwtToken)
+  }, [jwtToken])
+
+  const getHeaders = useCallback(() => {
+    const h = {}
+    if (jwtToken) h['Authorization'] = `Bearer ${jwtToken}`
+    return h
+  }, [jwtToken])
 
   const loadTrends = useCallback(async () => {
     setLoading(true)
@@ -172,7 +351,7 @@ export default function App() {
     try {
       const params = new URLSearchParams({ limit: 20, offset: 0 })
       if (statusFilter) params.set('status', statusFilter)
-      const res = await fetch(`${API_BASE}/?${params}`)
+      const res = await fetch(`${API_BASE}/?${params}`, { headers: getHeaders() })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       const data = await res.json()
       setTrends(data.trends ?? [])
@@ -182,73 +361,138 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [statusFilter])
+  }, [statusFilter, getHeaders])
+
+  const loadHistory = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`${HISTORY_API}?limit=20`, { headers: getHeaders() })
+      if (!res.ok) {
+        if (res.status === 401) throw new Error('Unauthorized. Please provide a valid JWT.')
+        throw new Error(`${res.status} ${res.statusText}`)
+      }
+      const data = await res.json()
+      setHistory(data.items ?? [])
+      setCount(data.items?.length ?? 0)
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [getHeaders])
 
   useEffect(() => {
-    loadTrends()
-  }, [loadTrends])
+    if (currentView === 'trends') loadTrends()
+    else if (currentView === 'history') loadHistory()
+  }, [currentView, loadTrends, loadHistory])
 
   return (
     <div className="app">
       {/* ── Header ── */}
       <header className="app-header">
         <div className="app-header__inner">
-          <div className="app-header__brand">
-            <span className="app-header__paw">🐾</span>
-            <h1 className="app-header__title">OpenPaws TrendFinder</h1>
+          <div className="app-header__top-row">
+            <div className="app-header__brand">
+              <span className="app-header__paw">🐾</span>
+              <h1 className="app-header__title">OpenPaws TrendFinder</h1>
+            </div>
+            <div className="app-header__auth">
+              <input 
+                type="password" 
+                placeholder="Paste Supabase JWT here" 
+                value={jwtToken}
+                onChange={e => setJwtToken(e.target.value)}
+                title="Supabase Auth Token for RLS"
+              />
+            </div>
           </div>
-          <p className="app-header__subtitle">Phase 6 · Human-in-the-Loop Trend Explainer</p>
+          <p className="app-header__subtitle">Phase 6-10 · Human-in-the-Loop Pipeline</p>
+          
+          <div className="app-tabs">
+            <button className={`tab-btn ${currentView === 'trends' ? 'active' : ''}`} onClick={() => setCurrentView('trends')}>Trends</button>
+            <button className={`tab-btn ${currentView === 'history' ? 'active' : ''}`} onClick={() => setCurrentView('history')}>My History</button>
+          </div>
         </div>
       </header>
 
       {/* ── Toolbar ── */}
-      <div className="toolbar">
-        <label htmlFor="status-filter" className="toolbar__label">Filter by status</label>
-        <select
-          id="status-filter"
-          className="toolbar__select"
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-        >
-          <option value="pending_review">Pending Review</option>
-          <option value="explainer_ready">Explainer Ready</option>
-          <option value="">All</option>
-        </select>
-        <button id="refresh-btn" className="toolbar__refresh" onClick={loadTrends}>
-          ↺ Refresh
-        </button>
-        {!loading && !error && (
-          <span className="toolbar__count">{count} trend{count !== 1 ? 's' : ''}</span>
-        )}
-      </div>
+      {currentView === 'trends' && (
+        <div className="toolbar">
+          <label htmlFor="status-filter" className="toolbar__label">Filter by status</label>
+          <select
+            id="status-filter"
+            className="toolbar__select"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+          >
+            <option value="pending_review">Pending Review</option>
+            <option value="explainer_ready">Explainer Ready</option>
+            <option value="">All</option>
+          </select>
+          <button id="refresh-btn" className="toolbar__refresh" onClick={loadTrends}>
+            ↺ Refresh
+          </button>
+          {!loading && !error && (
+            <span className="toolbar__count">{count} trend{count !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      )}
+      
+      {currentView === 'history' && (
+        <div className="toolbar">
+          <button id="refresh-btn" className="toolbar__refresh" onClick={loadHistory}>
+            ↺ Refresh History
+          </button>
+          {!loading && !error && (
+            <span className="toolbar__count">{count} record{count !== 1 ? 's' : ''}</span>
+          )}
+        </div>
+      )}
 
       {/* ── Main content ── */}
       <main className="app-main">
         {loading && (
           <div className="state-box">
-            <span className="spinner spinner--lg" aria-label="Loading trends" />
-            <p>Loading trends…</p>
+            <span className="spinner spinner--lg" aria-label="Loading" />
+            <p>Loading…</p>
           </div>
         )}
 
         {error && !loading && (
           <div className="state-box state-box--error">
-            <p>⚠ Failed to load trends</p>
+            <p>⚠ Failed to load data</p>
             <code>{error}</code>
-            <button className="btn-explain" onClick={loadTrends}>Retry</button>
+            <button className="btn-explain" onClick={currentView === 'trends' ? loadTrends : loadHistory}>Retry</button>
           </div>
         )}
 
-        {!loading && !error && trends.length === 0 && (
+        {/* Trends View */}
+        {currentView === 'trends' && !loading && !error && trends.length === 0 && (
           <div className="state-box">
             <p>No trends found for <strong>{statusFilter || 'all'}</strong> status.</p>
           </div>
         )}
 
-        {!loading && !error && trends.length > 0 && (
+        {currentView === 'trends' && !loading && !error && trends.length > 0 && (
           <div className="trends-grid">
             {trends.map((trend) => (
-              <TrendCard key={trend.trend_id} trend={trend} />
+              <TrendCard key={trend.trend_id} trend={trend} jwtToken={jwtToken} />
+            ))}
+          </div>
+        )}
+
+        {/* History View */}
+        {currentView === 'history' && !loading && !error && history.length === 0 && (
+          <div className="state-box">
+            <p>No history found for your user. Generate some content first!</p>
+          </div>
+        )}
+
+        {currentView === 'history' && !loading && !error && history.length > 0 && (
+          <div className="history-grid">
+            {history.map((item) => (
+              <HistoryItem key={item.id} item={item} />
             ))}
           </div>
         )}

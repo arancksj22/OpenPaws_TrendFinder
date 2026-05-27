@@ -356,3 +356,233 @@ html, body, #root {
   .app-main { padding: 1rem; }
   .toolbar { padding: 0.75rem 1rem; }
 }
+
+/* ── Auth & Tabs ─────────────────────────────────────────────────────────── */
+.app-header__top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.app-header__auth input {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  width: 250px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.app-header__auth input:focus {
+  border-color: var(--accent);
+}
+
+.app-tabs {
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.tab-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 0.5rem 0;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+.tab-btn:hover { color: var(--text); }
+.tab-btn.active { color: #fff; }
+.tab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px;
+}
+
+/* ── Generate Button ─────────────────────────────────────────────────────── */
+.btn-generate {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1.1rem;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.1s;
+  min-width: 100px;
+  justify-content: center;
+}
+.btn-generate:hover:not(:disabled) { opacity: 0.85; }
+.btn-generate:active:not(:disabled) { transform: scale(0.97); }
+.btn-generate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Generation Result Panel ─────────────────────────────────────────────── */
+.gen-panel {
+  margin-top: 1.5rem;
+  border-top: 1px dashed var(--border);
+  padding-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  animation: fadeIn 0.4s ease;
+}
+.gen-panel__title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--accent-2);
+}
+.gen-panel__brief h5, .gen-panel__drafts h5 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+.gen-panel__brief p {
+  font-size: 0.9rem;
+  line-height: 1.6;
+  background: var(--surface-2);
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.gen-panel__image img {
+  max-width: 100%;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.gen-panel__drafts {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* ── Draft Card ──────────────────────────────────────────────────────────── */
+.draft-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.draft-card--recommended {
+  border-color: var(--green);
+  background: rgba(52, 211, 153, 0.03);
+}
+.draft-card--failed {
+  border-color: var(--red);
+  opacity: 0.7;
+}
+.draft-card__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.draft-card__tone {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent);
+  background: rgba(108,140,255,0.1);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+.draft-card__text {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #fff;
+}
+.draft-card__meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  display: flex;
+  gap: 0.5rem;
+}
+.draft-card__issues {
+  background: rgba(248,113,113,0.1);
+  border: 1px solid var(--red);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  color: var(--red);
+}
+
+/* ── Score Bars ──────────────────────────────────────────────────────────── */
+.draft-card__scores {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.score-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-bottom: 0.5rem;
+}
+.score-bar__info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+}
+.score-bar__label { color: var(--text-muted); }
+.score-bar__value { font-family: monospace; color: var(--text); font-weight: 600; }
+.score-bar__track {
+  height: 6px;
+  background: var(--surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.score-bar__fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease;
+}
+.score-bar--composite .score-bar__label {
+  font-weight: 700;
+  color: var(--accent);
+}
+.score-bar--composite .score-bar__track {
+  height: 8px;
+}
+.draft-card__scores-details summary {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-top: 0.5rem;
+}
+.draft-card__metrics-grid {
+  margin-top: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem 1rem;
+}
+
+/* ── History Grid ────────────────────────────────────────────────────────── */
+.history-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+}
+.history-item {
+  max-width: 800px;
+}
+
