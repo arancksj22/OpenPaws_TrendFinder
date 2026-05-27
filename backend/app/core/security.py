@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from dataclasses import dataclass
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -11,9 +12,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 _bearer = HTTPBearer(auto_error=False)
 
 
-def get_current_user_id(
+@dataclass(frozen=True)
+class AuthContext:
+	user_id: str
+	token: str
+
+
+def get_auth_context(
 	credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
-) -> str:
+) -> AuthContext:
 	if credentials is None:
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
@@ -48,4 +55,8 @@ def get_current_user_id(
 			detail="Token missing user identifier",
 		)
 
-	return str(user_id)
+	return AuthContext(user_id=str(user_id), token=token)
+
+
+def get_current_user_id(auth: AuthContext = Depends(get_auth_context)) -> str:
+	return auth.user_id

@@ -82,6 +82,10 @@ class StorageConfig:
 	    Supabase project REST URL. Reads ``SUPABASE_URL`` from env if not set.
 	supabase_service_role_key:
 	    Service-role key (full write access). Reads ``SUPABASE_SERVICE_ROLE_KEY``.
+	supabase_anon_key:
+	    Anonymous key for RLS-enforced requests. Reads ``SUPABASE_ANON_KEY``.
+	user_jwt:
+	    End-user JWT for RLS enforcement (Authorization header).
 	table_name:
 	    Name of the Supabase table for generated content records.
 	storage_bucket:
@@ -90,6 +94,8 @@ class StorageConfig:
 
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
+	supabase_anon_key: str | None = None
+	user_jwt: str | None = None
 	table_name: str = "generated_content"
 	storage_bucket: str = _BUCKET_NAME
 
@@ -243,10 +249,30 @@ def fetch_user_history(
 
 def _create_client(config: StorageConfig) -> Client:
 	url = config.supabase_url or os.getenv("SUPABASE_URL")
-	key = config.supabase_service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
-	if not url or not key:
-		raise RuntimeError("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY")
-	return create_client(url, key)
+	if not url:
+		raise RuntimeError("Missing SUPABASE_URL")
+
+	anon_key = config.supabase_anon_key or os.getenv("SUPABASE_ANON_KEY")
+	service_key = config.supabase_service_role_key or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+
+	if config.user_jwt:
+		if not anon_key:
+			raise RuntimeError("Missing SUPABASE_ANON_KEY for RLS requests")
+		try:
+			from supabase.client import ClientOptions
+			options = ClientOptions(headers={"Authorization": f"Bearer {config.user_jwt}"})
+			return create_client(url, anon_key, options)
+		except Exception:
+			client = create_client(url, anon_key)
+			try:
+				client.postgrest.auth(config.user_jwt)
+			except Exception:
+				logger.warning("Failed to attach JWT to Supabase client; RLS may block requests")
+			return client
+
+	if not service_key:
+		raise RuntimeError("Missing SUPABASE_SERVICE_ROLE_KEY")
+	return create_client(url, service_key)
 
 
 def _upload_image(
