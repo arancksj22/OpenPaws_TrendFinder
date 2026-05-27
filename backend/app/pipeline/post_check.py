@@ -45,6 +45,7 @@ class PostCheckConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
 	posts_table: str = "posts"
+	trends_table: str = "trends"
 	select_fields: str = "id,title,body,text,permalink,url,community"
 
 
@@ -175,3 +176,22 @@ def _normalize_list(items: Iterable[Any]) -> list[str]:
 		if value:
 			normalized.append(value)
 	return normalized
+
+
+def update_trend_statuses(
+	trend_ids: Iterable[str],
+	status_value: str,
+	config: PostCheckConfig | None = None,
+) -> int:
+	config = config or PostCheckConfig()
+	client = _create_supabase_client(config)
+	ids = [trend_id for trend_id in trend_ids if trend_id]
+	if not ids:
+		return 0
+	response = (
+		client.table(config.trends_table)
+		.update({"status": status_value})
+		.in_("id", ids)
+		.execute()
+	)
+	return len(response.data or [])

@@ -21,3 +21,13 @@ class GenerateContentResponse(BaseModel):
 
 class HistoryResponse(BaseModel):
 	items: list[dict[str, Any]]
+
+
+class DiscoveryRunnerResponse(BaseModel):
+	status: str
+	dequeued_count: int
+	kept_posts: int
+	clustered_trends: int
+	blocked_trends: int
+	acknowledged: int
+	stream_name: str

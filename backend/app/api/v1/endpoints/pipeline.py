@@ -12,8 +12,11 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core.queue import RedisQueue, RedisQueueConfig
+from app.pipeline.clustering import ClusteringConfig, cluster_posts
 from app.pipeline.ingestion import ingest_bluesky_posts
 from app.pipeline.normalization import normalize_bluesky_posts
+from app.pipeline.post_check import load_post_check_rules, post_batch_check, update_trend_statuses
+from app.pipeline.pre_check import filter_posts, load_pre_check_rules
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,18 @@ class PipelineTriggerResponse(BaseModel):
 	normalized_count: int | None = None
 	enqueued_count: int | None = None
 	stream_name: str | None = None
+
+
+class DiscoveryRunnerRequest(BaseModel):
+	discovery_stream_name: str = "trendfinder:discovery"
+	pre_check_config_path: str = "config/pre_check.yaml"
+	post_check_config_path: str = "config/post_check.yaml"
+	batch_size: int = 100
+	max_batches: int = 5
+	drain: bool = True
+
+
+from app.schemas.content import DiscoveryRunnerResponse
 
 
 @router.post("/trigger")
@@ -73,6 +88,67 @@ async def trigger_pipeline(request: PipelineTriggerRequest) -> JSONResponse:
 	return JSONResponse(
 		content=response.model_dump(exclude_none=True),
 		status_code=status.HTTP_200_OK,
+	)
+
+
+@router.post("/discover", response_model=DiscoveryRunnerResponse)
+async def run_discovery_pipeline(request: DiscoveryRunnerRequest) -> DiscoveryRunnerResponse:
+	queue = await RedisQueue.create(RedisQueueConfig(stream_name=request.discovery_stream_name))
+	messages = []
+	message_ids: list[str] = []
+	try:
+		for _ in range(max(1, request.max_batches)):
+			batch = await queue.dequeue(count=request.batch_size)
+			if not batch:
+				break
+			messages.extend(batch)
+			message_ids.extend([msg.message_id for msg in batch])
+			if not request.drain:
+				break
+	finally:
+		await queue.close()
+
+	if not messages:
+		return DiscoveryRunnerResponse(
+			status="empty",
+			dequeued_count=0,
+			kept_posts=0,
+			clustered_trends=0,
+			blocked_trends=0,
+			acknowledged=0,
+			stream_name=request.discovery_stream_name,
+		)
+
+	posts = [msg.payload for msg in messages]
+	pre_rules = load_pre_check_rules(request.pre_check_config_path)
+	filtered_posts = filter_posts(posts, pre_rules)
+
+	trends = cluster_posts(filtered_posts, ClusteringConfig()) if filtered_posts else []
+	post_rules = load_post_check_rules(request.post_check_config_path)
+	kept_trends, blocked_trends = post_batch_check(trends, post_rules)
+
+	blocked_ids = [trend.get("trend_id") for trend in blocked_trends if trend.get("trend_id")]
+	kept_ids = [trend.get("trend_id") for trend in kept_trends if trend.get("trend_id")]
+
+	if blocked_ids:
+		update_trend_statuses(blocked_ids, "blocked")
+	if kept_ids:
+		update_trend_statuses(kept_ids, "pending_review")
+
+	queue = await RedisQueue.create(RedisQueueConfig(stream_name=request.discovery_stream_name))
+	try:
+		ack_count = await queue.ack(message_ids)
+	finally:
+		await queue.close()
+
+	return DiscoveryRunnerResponse(
+		status="completed",
+		dequeued_count=len(messages),
+		kept_posts=len(filtered_posts),
+		clustered_trends=len(trends),
+		blocked_trends=len(blocked_trends),
+		acknowledged=ack_count,
+		stream_name=request.discovery_stream_name,
 	)
 
 
