@@ -63,7 +63,7 @@ def fetch_trends_for_review(
 	query = client.table(config.trends_table).select("*")
 	if status_filter:
 		query = query.eq("status", status_filter)
-	query = query.order("created_at", desc=True).range(offset, offset + limit - 1)
+	query = query.order("representative_count", desc=True).order("created_at", desc=True).range(offset, offset + limit - 1)
 
 	trends_response = query.execute()
 	trend_rows = trends_response.data or []

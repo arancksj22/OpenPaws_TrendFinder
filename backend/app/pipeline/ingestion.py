@@ -121,7 +121,7 @@ async def ingest_bluesky_posts(
 		try:
 			posts = _search_posts(client, source.tags, effective)
 			for post in posts:
-				uri = post.get("post_uri")
+				uri = post.get("post_id")
 				if uri in seen_uris:
 					continue
 				seen_uris.add(uri)
@@ -162,10 +162,12 @@ def _search_posts(
 	settings: IngestionDefaults,
 ) -> list[dict[str, Any]]:
 	"""Search Bluesky for posts matching the given hashtags."""
+	# Construct a relaxed OR query out of all tags in the group
+	query_str = " OR ".join(tags)
+	
 	response = client.app.bsky.feed.search_posts(
 		params={
-			"q": tags[0],
-			"tag": tags,
+			"q": query_str,
 			"sort": settings.sort,
 			"limit": min(settings.post_limit, 100),
 		}
