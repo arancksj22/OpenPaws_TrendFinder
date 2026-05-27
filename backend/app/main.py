@@ -14,7 +14,7 @@ from app.api.v1.router import api_router
 
 
 def _load_cors_origins() -> list[str]:
-	raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://localhost:5173")
+	raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174")
 	return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import './App.css'
+import LoginPage from './components/LoginPage'
 import { Button } from './components/ui/button'
 import { Card, CardContent, CardHeader, CardFooter } from './components/ui/card'
 import { Badge } from './components/ui/badge'
@@ -8,11 +9,12 @@ import { Separator } from './components/ui/separator'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './components/ui/collapsible'
 import {
   RefreshCw, Play, Sparkles, ChevronDown, ExternalLink,
-  Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash
+  Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash, LogOut
 } from 'lucide-react'
 
 const API_BASE = '/api/v1/trends'
 const HISTORY_API = '/api/v1/history'
+const AUTH_API = '/api/v1/auth'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -170,7 +172,6 @@ function GenerationResultPanel({ data }) {
 
 function ExplainerPanel({ data }) {
   if (!data) return null
-  const [rawOpen, setRawOpen] = useState(false)
   return (
     <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-100 p-4 flex flex-col gap-3">
       <div className="flex items-center gap-2">
@@ -178,22 +179,6 @@ function ExplainerPanel({ data }) {
         <span className="text-xs font-semibold uppercase tracking-wider text-emerald-700">AI Explainer</span>
       </div>
       <p className="text-sm leading-relaxed text-gray-700">{data.explainer}</p>
-      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground pt-1 border-t border-emerald-100">
-        <span>Model: <code className="font-mono-data text-foreground">{data.model_used}</code></span>
-        <span>Prompt: <code className="font-mono-data text-foreground">{data.prompt_tokens ?? '—'}</code> tk</span>
-        <span>Completion: <code className="font-mono-data text-foreground">{data.completion_tokens ?? '—'}</code> tk</span>
-      </div>
-      <Collapsible open={rawOpen} onOpenChange={setRawOpen}>
-        <CollapsibleTrigger className="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-          <ChevronDown className={`w-3 h-3 transition-transform duration-200 ${rawOpen ? 'rotate-180' : ''}`} />
-          Raw JSON
-        </CollapsibleTrigger>
-        <CollapsibleContent>
-          <pre className="mt-2 text-[11px] font-mono-data text-muted-foreground bg-white rounded-lg p-3 overflow-auto max-h-48 border border-emerald-100">
-            {JSON.stringify(data, null, 2)}
-          </pre>
-        </CollapsibleContent>
-      </Collapsible>
     </div>
   )
 }
@@ -272,28 +257,18 @@ function TrendCard({ trend, jwtToken }) {
       {/* Header */}
       <CardHeader className="px-5 py-4 gap-3">
         <div className="flex items-center justify-between">
-          <code className="font-mono-data text-[11px] text-muted-foreground bg-secondary px-2 py-0.5 rounded">
-            #{shortId(trend.trend_id)}
-          </code>
+          <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
+            <span className="flex items-center gap-1.5">
+              <TrendingUp className="w-3.5 h-3.5 text-foreground" />
+              <span className="font-medium text-foreground">{trend.representative_count ?? 0}</span> posts
+            </span>
+            <span>·</span>
+            <span className="flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              {trend.created_at ? new Date(trend.created_at).toLocaleDateString() : '—'}
+            </span>
+          </div>
           {statusBadge(trend.status)}
-        </div>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-          <span className="flex items-center gap-1.5">
-            <TrendingUp className="w-3.5 h-3.5" />
-            <span className="font-medium text-foreground">{trend.representative_count ?? 0}</span> posts
-          </span>
-          <span>·</span>
-          <span className="flex items-center gap-1">
-            <Hash className="w-3 h-3" />
-            <code className="font-mono-data text-[11px] bg-secondary px-1.5 py-0.5 rounded text-foreground">
-              {shortId(trend.cluster_key)}
-            </code>
-          </span>
-          <span>·</span>
-          <span className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
-            {trend.created_at ? new Date(trend.created_at).toLocaleDateString() : '—'}
-          </span>
         </div>
       </CardHeader>
 
@@ -408,8 +383,8 @@ function HistoryItem({ item }) {
     <Card className="overflow-hidden p-0">
       <CardHeader className="px-5 py-4">
         <div className="flex items-center justify-between">
-          <span className="font-mono-data text-[11px] text-muted-foreground">
-            Trend #{shortId(item.trend_id)}
+          <span className="text-sm font-medium text-foreground">
+            Saved Generation
           </span>
           <Badge variant="ready" className="gap-1">
             <Clock className="w-3 h-3" />
@@ -436,18 +411,62 @@ export default function App() {
   const [error, setError] = useState(null)
 
   const [statusFilter, setStatusFilter] = useState('pending_review')
-  const [jwtToken, setJwtToken] = useState(localStorage.getItem('openpaws_jwt') || '')
   const [currentView, setCurrentView] = useState('trends')
 
+  // ── Auth state ────────────────────────────────────────────────────────────
+  const [authChecked, setAuthChecked] = useState(false) // has /me been called?
+  const [authed, setAuthed]           = useState(false)
+  const [authToken, setAuthToken]     = useState(null)
+  const [authUser, setAuthUser]       = useState(null)  // { id, email }
+
+  // On mount: validate any stored token with /me
   useEffect(() => {
-    localStorage.setItem('openpaws_jwt', jwtToken)
-  }, [jwtToken])
+    const storedToken = localStorage.getItem('openpaws_jwt')
+    if (!storedToken) { setAuthChecked(true); return }
+    fetch(`${AUTH_API}/me`, {
+      headers: { Authorization: `Bearer ${storedToken}` }
+    })
+      .then(res => {
+        if (!res.ok) throw new Error('invalid')
+        return res.json()
+      })
+      .then(data => {
+        setAuthToken(storedToken)
+        setAuthUser({ id: data.user_id, email: data.email })
+        setAuthed(true)
+      })
+      .catch(() => {
+        localStorage.removeItem('openpaws_jwt')
+        localStorage.removeItem('openpaws_user')
+      })
+      .finally(() => setAuthChecked(true))
+  }, [])
+
+  const handleLogin = useCallback((token, user) => {
+    setAuthToken(token)
+    setAuthUser(user)
+    setAuthed(true)
+  }, [])
+
+  const handleLogout = useCallback(async () => {
+    try {
+      await fetch(`${AUTH_API}/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${authToken}` }
+      })
+    } catch (_) { /* non-fatal */ }
+    localStorage.removeItem('openpaws_jwt')
+    localStorage.removeItem('openpaws_user')
+    setAuthToken(null)
+    setAuthUser(null)
+    setAuthed(false)
+  }, [authToken])
 
   const getHeaders = useCallback(() => {
     const h = {}
-    if (jwtToken) h['Authorization'] = `Bearer ${jwtToken}`
+    if (authToken) h['Authorization'] = `Bearer ${authToken}`
     return h
-  }, [jwtToken])
+  }, [authToken])
 
   const loadTrends = useCallback(async () => {
     setLoading(true)
@@ -471,9 +490,9 @@ export default function App() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`${HISTORY_API}?limit=20`, { headers: getHeaders() })
+      const res = await fetch(`${HISTORY_API}/?limit=20`, { headers: getHeaders() })
       if (!res.ok) {
-        if (res.status === 401) throw new Error('Unauthorized. Please provide a valid JWT.')
+        if (res.status === 401) throw new Error('Session expired. Please log in again.')
         throw new Error(`${res.status} ${res.statusText}`)
       }
       const data = await res.json()
@@ -522,33 +541,51 @@ export default function App() {
     { id: 'history', label: 'My History' },
   ]
 
+  // ── Gates ─────────────────────────────────────────────────────────────────
+  if (!authChecked) {
+    // Waiting for /me check — show minimal loading screen
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <span className="spinner w-8 h-8" style={{ borderWidth: 3 }} />
+      </div>
+    )
+  }
+
+  if (!authed) {
+    return <LoginPage onLogin={handleLogin} />
+  }
+
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* ── Header ── */}
       <header className="sticky top-0 z-50 bg-background/80 backdrop-blur-xl border-b border-border">
         <div className="max-w-6xl mx-auto px-6">
           {/* Top row */}
-          <div className="flex items-center justify-between h-14">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-3.5">
               <img
                 src="/openpawslogo.png"
                 alt="OpenPaws"
-                className="h-7 w-auto"
+                className="h-8 w-auto"
               />
               <div>
-                <h1 className="text-sm font-semibold text-foreground tracking-tight">OpenPaws TrendFinder</h1>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Phase 6–10 Pipeline</p>
+                <h1 className="text-base font-semibold text-foreground tracking-tight">OpenPaws TrendFinder</h1>
               </div>
             </div>
-            <div>
-              <input
-                type="password"
-                placeholder="Supabase JWT token"
-                value={jwtToken}
-                onChange={e => setJwtToken(e.target.value)}
-                title="Supabase Auth Token for RLS"
-                className="text-xs h-8 px-3 rounded-lg border border-border bg-secondary text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary transition-all font-mono-data w-52"
-              />
+            <div className="flex items-center gap-3">
+              {authUser?.email && (
+                <span className="text-sm font-medium text-foreground hidden sm:block">{authUser.email}</span>
+              )}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={handleLogout}
+                className="gap-1.5 h-8 text-muted-foreground"
+                title="Sign out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Sign out</span>
+              </Button>
             </div>
           </div>
 
@@ -676,7 +713,7 @@ export default function App() {
         {currentView === 'trends' && !loading && !error && trends.length > 0 && (
           <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
             {trends.map((trend) => (
-              <TrendCard key={trend.trend_id} trend={trend} jwtToken={jwtToken} />
+              <TrendCard key={trend.trend_id} trend={trend} jwtToken={authToken} />
             ))}
           </div>
         )}

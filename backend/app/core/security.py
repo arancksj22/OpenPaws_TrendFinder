@@ -25,13 +25,14 @@ def get_auth_context(
 		raise HTTPException(
 			status_code=status.HTTP_401_UNAUTHORIZED,
 			detail="Missing Authorization header",
+			headers={"WWW-Authenticate": "Bearer"},
 		)
 
 	secret = os.getenv("SUPABASE_JWT_SECRET")
 	if not secret:
 		raise HTTPException(
 			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-			detail="SUPABASE_JWT_SECRET is not configured",
+			detail="SUPABASE_JWT_SECRET is not configured on the server",
 		)
 
 	token = credentials.credentials
@@ -44,12 +45,19 @@ def get_auth_context(
 		)
 		user_id = payload.get("sub") or payload.get("user_id")
 		if not user_id:
-			raise ValueError("Token missing user identifier")
-	except Exception:
-		# For local testing, if the user pastes the raw secret or an invalid token,
-		# fallback to a dummy user instead of throwing a 401.
-		user_id = "local_test_user"
-		token = None
+			raise ValueError("Token missing user identifier (sub claim)")
+	except jwt.ExpiredSignatureError:
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail="Token has expired",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
+	except Exception as exc:
+		raise HTTPException(
+			status_code=status.HTTP_401_UNAUTHORIZED,
+			detail=f"Invalid token: {exc}",
+			headers={"WWW-Authenticate": "Bearer"},
+		)
 
 	return AuthContext(user_id=str(user_id), token=token)
 
