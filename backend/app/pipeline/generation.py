@@ -44,14 +44,14 @@ class GenerationConfig:
 	gemini_api_key: str | None = None
 	cerebras_api_key: str | None = None
 	# Flash model for all calls — cheap and fast.
-	brief_model: str = "llama3.1-8b"
-	draft_model: str = "llama3.1-8b"
+	brief_model: str = "gpt-oss-120b"
+	draft_model: str = "gpt-oss-120b"
 	# Imagen fast model for the single infographic image.
 	image_model: str = "imagen-4.0-fast-generate-001"
 	image_prompt_max_chars: int = 900
 	# Token budgets
-	brief_max_tokens: int = 1024
-	draft_max_tokens: int = 150
+	brief_max_tokens: int = 8192
+	draft_max_tokens: int = 8192
 	# Temperature: low for brief (factual), slightly higher for creative drafts.
 	brief_temperature: float = 0.3
 	draft_temperature: float = 0.7
@@ -345,11 +345,26 @@ def _generate_trend_image(
 	try:
 		import urllib.parse
 		import urllib.request
+		import random
 
-		# A very simple, concise prompt focused on animal advocacy and the trend's core message.
+		styles = [
+			"watercolor illustration",
+			"minimalist flat vector art",
+			"dramatic cinematic photography",
+			"dreamy pastel digital art",
+			"vibrant pop art poster style",
+			"clean corporate isometric 3d",
+			"hand-drawn sketch aesthetic"
+		]
+		style = random.choice(styles)
+
+		# Inject randomness via style and hashtags so the outputs are varied.
+		hashtags_str = " ".join(brief.suggested_hashtags[:3])
 		prompt = (
-			f"Simple beautiful animal advocacy artwork about: {brief.positioning_angle[:100]}. "
-			"No text. No words. Minimalist."
+			f"Powerful symbolic advocacy artwork. Subject: {brief.positioning_angle[:150]}. "
+			f"Style: {style}. Themes: {hashtags_str}. "
+			"Use striking abstract symbols, powerful metaphors, or evocative imagery rather than just literal animals. "
+			"No text. No words. Stunning aesthetic."
 		)
 		
 		encoded_prompt = urllib.parse.quote(prompt)

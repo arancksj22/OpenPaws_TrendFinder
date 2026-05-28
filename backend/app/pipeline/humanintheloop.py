@@ -35,7 +35,7 @@ class HumanInTheLoopConfig:
 	posts_table: str = "posts"
 	posts_select_fields: str = "id,title,body,text,community,permalink,url,score,num_comments"
 	max_prompt_posts: int = 5
-	max_explainer_tokens: int = 300
+	max_explainer_tokens: int = 4096
 
 
 # ---------------------------------------------------------------------------
@@ -294,7 +294,7 @@ def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
 	)
 
 	response = client.chat.completions.create(
-		model="gpt-oss-120b",
+		model=config.text_model,
 		messages=[
 			{"role": "system", "content": _EXPLAINER_SYSTEM_PROMPT},
 			{"role": "user", "content": prompt}

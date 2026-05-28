@@ -716,12 +716,63 @@ export default function App() {
       {/* ── Main ── */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
 
-        {loading && (
-          <div className="flex flex-col items-center justify-center py-24 gap-4 text-muted-foreground">
-            <span className="spinner w-8 h-8" aria-label="Loading" style={{ borderWidth: 3 }} />
-            <p className="text-sm">Loading…</p>
-          </div>
-        )}
+        <AnimatePresence mode="wait">
+          {loading && (
+            <motion.div
+              key="loader"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="flex flex-col items-center justify-center py-32 gap-6"
+            >
+              <div className="relative flex items-center justify-center w-20 h-20">
+                <motion.div 
+                  animate={{ rotate: 360 }} 
+                  transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
+                />
+                <Sparkles className="w-8 h-8 text-emerald-500 animate-pulse" />
+              </div>
+              <div className="flex flex-col items-center gap-2">
+                <motion.p 
+                  animate={{ opacity: [0.5, 1, 0.5] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                  className="text-sm font-semibold tracking-wider text-emerald-600 uppercase"
+                >
+                  Syncing Data…
+                </motion.p>
+                <p className="text-xs text-muted-foreground">
+                  Fetching the latest trend clusters from the database.
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {pipelineLoading && !loading && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -20, height: 0 }}
+              className="mb-6 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center gap-4"
+            >
+              <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
+                <motion.div 
+                  animate={{ rotate: 360 }} 
+                  transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
+                  className="absolute inset-0 rounded-full border-2 border-emerald-500/20 border-t-emerald-500"
+                />
+                <Sparkles className="w-4 h-4 text-emerald-500 animate-pulse" />
+              </div>
+              <div className="flex flex-col gap-0.5">
+                <p className="text-sm font-semibold text-emerald-700">Executing AI Pipeline in background…</p>
+                <p className="text-xs text-emerald-600/80">Ingesting BlueSky data, generating vector embeddings, and clustering new trends. You can continue working!</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {error && !loading && (
           <div className="flex flex-col items-center justify-center py-24 gap-4">

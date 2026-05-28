@@ -1,6 +1,6 @@
 # Open Paws TrendFinder
 
-Welcome to the **Open Paws TrendFinder**! This is an autonomous, end-to-end AI platform designed to ingest social media firehose data (like Bluesky), semantically cluster them into emerging animal advocacy trends, and generate stunning, aesthetic visual content ready for publication.
+Welcome to the **Open Paws TrendFinder**! This is an autonomous, end-to-end AI platform designed to ingest BlueSky data, semantically cluster them into emerging animal advocacy trends, and generate stunning, aesthetic visual content ready for publication.
 
 This repository contains both the heavy-duty **Python/FastAPI Backend** (featuring a 10-phase automated AI pipeline) and the beautiful **React/Vite Frontend** dashboard designed for human-in-the-loop review.
 
@@ -27,8 +27,8 @@ Open Paws TrendFinder is built to be modular, fast, and scalable. It shifts from
 The heart of the application lives in `backend/app/pipeline/`. It executes a highly sequential, self-validating workflow to turn raw social media noise into ready-to-publish aesthetic content. 
 
 ### Discovery & Clustering
-1. **Phase 1: Bluesky Ingestion**: Connects to the Bluesky AT Protocol firehose, actively polling for advocacy-related hashtags (e.g., `#animalrights`, `#vegan`). It pulls in a high volume of raw posts to feed the discovery engine.
-2. **Phase 2: Normalization**: Cleans and standardizes the raw firehose data. It strips out malformed characters, normalizes URLs, and maps all inputs into a unified `Post` schema, ensuring downstream systems don't break on dirty data.
+1. **Phase 1: Bluesky Ingestion**: Connects to Bluesky, actively polling for advocacy-related hashtags (e.g., `#animalrights`, `#vegan`). It pulls in a high volume of raw posts to feed the discovery engine.
+2. **Phase 2: Normalization**: Cleans and standardizes the raw BlueSky data. It strips out malformed characters, normalizes URLs, and maps all inputs into a unified `Post` schema, ensuring downstream systems don't break on dirty data.
 3. **Phase 3: Pre-Batch Check**: A fast local regex filter for normalized posts. It uses a configuration file to aggressively drop any posts containing blocked terms, banned sources, or blacklisted subreddits before passing them to the embedding generator.
 4. **Phase 4: Vector Clustering (pgvector)**: Uses Google `gemini-embedding-2` to create 1024-dimensional semantic vectors for every post. It then executes a highly optimized Cosine Distance search (`<#>`) directly inside Supabase's `pgvector` to group semantically identical posts into emerging "Trends".
 5. **Phase 5: Post-Batch Check**: Evaluates the newly clustered Trends as a single unit using `vaderSentiment`. It checks for strong advocacy keyword context, ensures a minimum cluster size, and decisively drops any clusters exhibiting an overwhelming negative sentiment consensus.
