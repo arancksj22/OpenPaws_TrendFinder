@@ -15,9 +15,9 @@ from app.pipeline.humanintheloop import (
 	fetch_trends_for_review,
 	generate_explainer,
 )
-from app.pipeline.production_storage import StorageConfig, store_generation, fetch_generation_by_trend, update_generation_image
-from app.pipeline.revalidation import RevalidationConfig, revalidate_and_score, serialise_result
-from app.schemas.content import GenerateContentResponse, StorageSummary, RegenerateImageResponse
+from app.pipeline.production_storage import StorageConfig, store_generation, fetch_generation_by_trend, update_generation_image, update_draft_text
+from app.pipeline.revalidation import RevalidationConfig, revalidate_and_score, serialise_result, _score_text
+from app.schemas.content import GenerateContentResponse, StorageSummary, RegenerateImageResponse, UpdateDraftRequest, UpdateDraftResponse
 from app.schemas.trend import (
 	ExplainerResponse,
 	TrendListResponse,
@@ -200,4 +200,49 @@ def regenerate_image_for_trend(
 	return RegenerateImageResponse(
 		trend_id=trend_id,
 		image_url=new_url,
+	)
+
+
+@router.patch("/{trend_id}/draft/{draft_index}", response_model=UpdateDraftResponse)
+def update_draft_text_for_trend(
+	trend_id: str,
+	draft_index: int,
+	payload: UpdateDraftRequest,
+	auth: AuthContext = Depends(get_auth_context),
+) -> UpdateDraftResponse:
+	"""Updates the text of a specific generated draft for a trend and re-scores it."""
+	# Re-score the newly edited text
+	try:
+		new_scores_obj = _score_text(payload.text, RevalidationConfig())
+		new_scores_dict = {
+			"advocacy_preference": new_scores_obj.advocacy_preference,
+			"potential_influence": new_scores_obj.potential_influence,
+			"emotional_impact": new_scores_obj.emotional_impact,
+			"animal_alignment": new_scores_obj.animal_alignment,
+			"composite": new_scores_obj.composite,
+		}
+	except Exception as e:
+		logger.exception("Failed to re-score updated draft text")
+		new_scores_dict = None
+
+	updated_draft = update_draft_text(
+		user_id=auth.user_id,
+		trend_id=trend_id,
+		draft_index=draft_index,
+		new_text=payload.text,
+		scores=new_scores_dict,
+	)
+	
+	if not updated_draft:
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail="Draft not found or invalid index.",
+		)
+
+	return UpdateDraftResponse(
+		trend_id=trend_id,
+		draft_index=draft_index,
+		text=updated_draft["text"],
+		char_count=updated_draft["char_count"],
+		scores=updated_draft.get("scores"),
 	)

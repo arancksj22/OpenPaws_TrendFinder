@@ -17,6 +17,16 @@ Public API
         user_id, generation_result, scored_payload, config
     )
 
+  __all__ = [
+	"StorageConfig",
+	"StorageResult",
+	"store_generation",
+	"fetch_user_history",
+	"fetch_generation_by_trend",
+	"update_generation_image",
+	"update_draft_text",
+]
+
 ``scored_payload`` is the dict produced by ``serialise_result()`` (Phase 9).
 ``generation_result`` is the ``GenerationResult`` object from Phase 8 (holds
 ``image_bytes`` and ``trend_id``).
@@ -298,6 +308,38 @@ def update_generation_image(
 	}).eq("id", record_id).execute()
 
 	return image_url
+
+
+def update_draft_text(
+	user_id: str,
+	trend_id: str,
+	draft_index: int,
+	new_text: str,
+	scores: dict[str, float] | None = None,
+	config: StorageConfig | None = None,
+) -> dict[str, Any] | None:
+	"""Update the text of a specific drafted post and optionally update its scores."""
+	config = config or StorageConfig()
+	client = _create_client(config)
+
+	existing = fetch_generation_by_trend(user_id=user_id, trend_id=trend_id, config=config)
+	if not existing:
+		return None
+
+	drafts = existing.get("scored_drafts", [])
+	if not drafts or draft_index < 0 or draft_index >= len(drafts):
+		return None
+
+	drafts[draft_index]["text"] = new_text
+	drafts[draft_index]["char_count"] = len(new_text)
+	if scores:
+		drafts[draft_index]["scores"] = scores
+
+	client.table(config.table_name).update({
+		"scored_drafts": drafts
+	}).eq("id", existing["id"]).execute()
+
+	return drafts[draft_index]
 
 
 # ---------------------------------------------------------------------------

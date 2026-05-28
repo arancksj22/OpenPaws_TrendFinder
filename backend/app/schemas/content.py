@@ -24,6 +24,18 @@ class RegenerateImageResponse(BaseModel):
 	image_url: str | None
 
 
+class UpdateDraftRequest(BaseModel):
+	text: str
+
+
+class UpdateDraftResponse(BaseModel):
+	trend_id: str
+	draft_index: int
+	text: str
+	char_count: int
+	scores: dict[str, float] | None = None
+
+
 class HistoryResponse(BaseModel):
 	items: list[dict[str, Any]]
 

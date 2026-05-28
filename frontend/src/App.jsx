@@ -10,7 +10,8 @@ import { Separator } from './components/ui/separator'
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './components/ui/collapsible'
 import {
   RefreshCw, Play, Sparkles, ChevronDown, ExternalLink,
-  Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash, LogOut
+  Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash, LogOut,
+  Copy, Check, Edit2, Download, Save, X
 } from 'lucide-react'
 
 const API_BASE = '/api/v1/trends'
@@ -66,14 +67,50 @@ function ScoreBar({ label, value, isComposite }) {
 
 // ─── DraftCard ───────────────────────────────────────────────────────────────
 
-function DraftCard({ draft, metrics }) {
-  const { tone, text, char_count, hashtags, passed_boundary_check, boundary_issues, is_recommended, scores } = draft
+function DraftCard({ draft, metrics, trendId, jwtToken, onUpdateDraft }) {
+  const { tone, text, char_count, hashtags, passed_boundary_check, boundary_issues, is_recommended, scores, index } = draft
   const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(text)
+  const [isSaving, setIsSaving] = useState(false)
 
   const toneColors = {
     factual: 'bg-blue-50 text-blue-700',
     emotional: 'bg-rose-50 text-rose-700',
     call_to_action: 'bg-violet-50 text-violet-700',
+  }
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleSave = async () => {
+    if (!trendId || !jwtToken) return
+    setIsSaving(true)
+    try {
+      const res = await fetch(`${API_BASE}/${trendId}/draft/${index}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${jwtToken}`
+        },
+        body: JSON.stringify({ text: editText })
+      })
+      if (!res.ok) throw new Error('Failed to save draft')
+      const updatedDraft = await res.json()
+      if (onUpdateDraft) {
+        onUpdateDraft(index, updatedDraft)
+      }
+      setIsEditing(false)
+    } catch (e) {
+      console.error(e)
+      alert("Failed to save draft edit")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   return (
@@ -96,6 +133,16 @@ function DraftCard({ draft, metrics }) {
               <AlertTriangle className="w-3 h-3" /> Boundary Failed
             </Badge>
           )}
+          <div className="flex items-center gap-1 ml-2">
+            {jwtToken && !isEditing && (
+              <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={() => { setIsEditing(true); setEditText(text); }}>
+                <Edit2 className="w-3 h-3" />
+              </Button>
+            )}
+            <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground hover:text-foreground" onClick={handleCopy}>
+              {copied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -105,7 +152,26 @@ function DraftCard({ draft, metrics }) {
         </div>
       )}
 
-      <p className="text-sm leading-relaxed text-foreground">{text}</p>
+      {isEditing ? (
+        <div className="flex flex-col gap-2">
+          <textarea
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            className="w-full min-h-[100px] p-3 text-sm rounded-md border border-input bg-background focus:outline-none focus:ring-2 focus:ring-primary/50 resize-y"
+            disabled={isSaving}
+          />
+          <div className="flex justify-end gap-2 mt-1">
+            <Button variant="outline" size="sm" onClick={() => setIsEditing(false)} disabled={isSaving}>
+              <X className="w-3 h-3 mr-1" /> Cancel
+            </Button>
+            <Button variant="default" size="sm" onClick={handleSave} disabled={isSaving}>
+              <Save className={`w-3 h-3 mr-1 ${isSaving ? 'animate-pulse' : ''}`} /> {isSaving ? 'Saving & Re-scoring...' : 'Save Edit'}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <p className="text-sm leading-relaxed text-foreground whitespace-pre-wrap">{text}</p>
+      )}
 
       <div className="flex items-center gap-3 text-xs text-muted-foreground">
         <span className="font-mono-data">{char_count}/300</span>
@@ -141,16 +207,53 @@ function DraftCard({ draft, metrics }) {
 
 // ─── GenerationResultPanel ───────────────────────────────────────────────────
 
-function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage }) {
+function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage, trendId, jwtToken, onUpdateDraft }) {
   if (!data || !data.generation) return null
   const gen = data.generation
   const storage = data.storage
 
+  const handleDownloadStrategy = () => {
+    let html = `
+      <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
+      <head><meta charset='utf-8'><title>Campaign Strategy</title></head>
+      <body style="font-family: Arial, sans-serif; line-height: 1.5;">
+        <h1 style="color: #2F363D;">Campaign Strategy: ${trendId}</h1>
+        <hr />
+    `;
+    if (gen.advocacy_brief) {
+      html += `<h2 style="color: #2F363D;">Advocacy Brief</h2><p>${gen.advocacy_brief.replace(/\n/g, '<br>')}</p>`;
+    }
+    if (gen.scored_drafts) {
+      html += `<h2 style="color: #2F363D;">Draft Posts</h2>`;
+      gen.scored_drafts.forEach((d, i) => {
+        html += `<h3 style="color: #0366D6;">Draft ${i + 1} (${d.tone})</h3>`;
+        html += `<p>${d.text.replace(/\n/g, '<br>')}</p>`;
+        if (d.hashtags?.length) html += `<p><strong>Hashtags:</strong> ${d.hashtags.map(h => '#' + h).join(' ')}</p>`;
+        html += `<br/>`;
+      })
+    }
+    html += `</body></html>`;
+    const blob = new Blob([html], { type: 'application/msword' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `campaign-strategy-${shortId(trendId)}.doc`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
   return (
     <div className="mt-4 flex flex-col gap-5">
-      <div className="flex items-center gap-2">
-        <Sparkles className="w-3.5 h-3.5 text-primary" />
-        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Generated Content</span>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="w-3.5 h-3.5 text-primary" />
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Generated Content</span>
+        </div>
+        <Button variant="outline" size="sm" className="h-7 text-xs gap-1.5" onClick={handleDownloadStrategy}>
+          <Download className="w-3 h-3" /> Download Strategy
+        </Button>
       </div>
 
       {storage?.image_url && (
@@ -181,7 +284,14 @@ function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage }) {
       <div className="flex flex-col gap-3">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scored Drafts</span>
         {gen.scored_drafts?.map(draft => (
-          <DraftCard key={draft.index} draft={draft} metrics={gen.score_meta.metrics} />
+          <DraftCard 
+            key={draft.index} 
+            draft={draft} 
+            metrics={gen.score_meta?.metrics || []} 
+            trendId={trendId}
+            jwtToken={jwtToken}
+            onUpdateDraft={onUpdateDraft}
+          />
         ))}
       </div>
     </div>
@@ -300,6 +410,24 @@ function TrendCard({ trend, jwtToken }) {
       setRegeneratingImage(false)
     }
   }, [trend.trend_id, jwtToken])
+
+  const handleUpdateDraft = useCallback((draftIndex, updatedDraft) => {
+    setGeneration(prev => {
+      if (!prev || !prev.generation) return prev
+      const newDrafts = [...prev.generation.scored_drafts]
+      newDrafts[draftIndex] = {
+        ...newDrafts[draftIndex],
+        ...updatedDraft
+      }
+      return {
+        ...prev,
+        generation: {
+          ...prev.generation,
+          scored_drafts: newDrafts
+        }
+      }
+    })
+  }, [])
 
   const examplePosts = trend.example_posts?.slice(0, 5) ?? []
 
@@ -435,6 +563,9 @@ function TrendCard({ trend, jwtToken }) {
                     data={generation} 
                     onRegenerateImage={handleRegenerateImage}
                     regeneratingImage={regeneratingImage}
+                    trendId={trend.trend_id}
+                    jwtToken={jwtToken}
+                    onUpdateDraft={handleUpdateDraft}
                   />
                 </div>
               </motion.div>
@@ -482,7 +613,7 @@ function HistoryItem({ item }) {
       </CardHeader>
       <Separator />
       <div className="px-5 pb-5">
-        <GenerationResultPanel data={mockData} />
+        <GenerationResultPanel data={mockData} trendId={item.trend_id} />
       </div>
     </Card>
   )

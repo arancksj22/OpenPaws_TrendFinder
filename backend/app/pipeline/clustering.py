@@ -178,9 +178,21 @@ def _select_top_examples(
 	scored = []
 	for post_id in post_ids:
 		post = post_by_id.get(post_id, {})
-		scored.append((post_id, _engagement_score(post)))
+		scored.append((post_id, _engagement_score(post), post.get("text", "")))
 	scored.sort(key=lambda item: item[1], reverse=True)
-	return [post_id for post_id, _score in scored[:top_k]]
+	
+	examples = []
+	seen_texts = set()
+	for post_id, _score, text in scored:
+		text_lower = (text or "").strip().lower()
+		if text_lower in seen_texts:
+			continue
+		seen_texts.add(text_lower)
+		examples.append(post_id)
+		if len(examples) >= top_k:
+			break
+			
+	return examples
 
 
 def _engagement_score(post: dict[str, Any]) -> int:
