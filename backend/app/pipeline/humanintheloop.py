@@ -29,7 +29,7 @@ class HumanInTheLoopConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
 	cerebras_api_key: str | None = None
-	text_model: str = "llama3.1-8b"
+	text_model: str = "gpt-oss-120b"
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
 	posts_table: str = "posts"
@@ -294,7 +294,7 @@ def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
 	)
 
 	response = client.chat.completions.create(
-		model=config.text_model,
+		model="gpt-oss-120b",
 		messages=[
 			{"role": "system", "content": _EXPLAINER_SYSTEM_PROMPT},
 			{"role": "user", "content": prompt}
