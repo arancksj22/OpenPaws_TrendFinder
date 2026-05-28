@@ -22,3 +22,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# IDEs & System Additions
+.gemini/
+
+# Scratch and UI Design
+design-system/

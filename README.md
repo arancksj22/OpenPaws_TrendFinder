@@ -1,4 +1,4 @@
-# 🐾 Open Paws TrendFinder
+# Open Paws TrendFinder
 
 Welcome to the **Open Paws TrendFinder**! This is an autonomous, end-to-end AI platform designed to ingest social media firehose data (like Bluesky and Reddit), semantically cluster them into emerging animal advocacy trends, and generate stunning, aesthetic visual content ready for publication.
 
@@ -6,9 +6,9 @@ This repository contains both the heavy-duty **Python/FastAPI Backend** (featuri
 
 ---
 
-## 🏗️ Architecture Overview
+## Architecture Overview
 
-![Architecture](architecture.png)
+![Architecture](backend/architecture.png)
 
 Open Paws TrendFinder is built to be modular, fast, and scalable. It shifts from simple cron jobs to a robust API-driven architecture that can be triggered asynchronously via queues or controlled directly from the frontend dashboard.
 
@@ -22,7 +22,7 @@ Open Paws TrendFinder is built to be modular, fast, and scalable. It shifts from
 
 ---
 
-## ⚙️ The 10-Phase AI Pipeline (Backend)
+## The 10-Phase AI Pipeline (Backend)
 
 The heart of the application lives in `backend/app/pipeline/`. It executes a highly sequential, self-validating workflow to turn raw social media noise into ready-to-publish aesthetic content. 
 
@@ -42,7 +42,7 @@ The heart of the application lives in `backend/app/pipeline/`. It executes a hig
 
 ---
 
-## 🎨 The Frontend Dashboard
+## The Frontend Dashboard
 
 The `frontend/` directory contains a premium, highly responsive React application.
 
@@ -52,7 +52,7 @@ The `frontend/` directory contains a premium, highly responsive React applicatio
 
 ---
 
-## 🔌 REST API Endpoints
+## REST API Endpoints
 
 The FastAPI backend exposes a clean REST API, grouped by functional routers. All routes are prefixed with `/api/v1`.
 
@@ -75,12 +75,12 @@ The FastAPI backend exposes a clean REST API, grouped by functional routers. All
 
 ---
 
-## 🛡️ Global Error Interceptor
+## Global Error Interceptor
 The backend features a robust global exception handler in `app/main.py`. If any API route completely crashes, the interceptor will catch it, prevent the server from halting, and write the full Python stack trace and request URL directly to the `api_error_logs` table in Supabase. 
 
 ---
 
-## 🤖 Discord Bot Integration
+## Discord Bot Integration
 Bypass the web dashboard and interact with your database natively from Discord! The bot is physically integrated into the FastAPI server lifecycle and boots up automatically.
 * **`!trends`**: Instantly fetches the top 5 highest-velocity trends from the last 24 hours.
 * **`!explain <trend_id>`**: Generates an AI summary for a trend and replies directly in the chat.
@@ -89,7 +89,7 @@ Bypass the web dashboard and interact with your database natively from Discord! 
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### 1. Prerequisites
 You need Python 3.11+, Node.js (v18+), and a fully configured Supabase project.
@@ -118,7 +118,7 @@ The React dashboard will be running at `http://localhost:5173`.
 
 ---
 
-## 📁 Full Directory Structure
+## Full Directory Structure
 ```text
 OpenPaws_TrendFinder/
 ├── backend/
