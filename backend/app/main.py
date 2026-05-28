@@ -67,3 +67,38 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health")
 def health_check() -> dict[str, str]:
 	return {"status": "ok"}
+
+import traceback
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from supabase import create_client
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+	"""Catch-all net for any unhandled exceptions in the FastAPI app."""
+	error_message = str(exc)
+	stack_trace = traceback.format_exc()
+	
+	logger.error(f"Global Exception Caught: {error_message}")
+	logger.error(stack_trace)
+	
+	# Write failure data directly to Supabase api_error_logs table
+	try:
+		url = os.getenv("SUPABASE_URL")
+		key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+		if url and key:
+			supabase = create_client(url, key)
+			supabase.table("api_error_logs").insert({
+				"endpoint": str(request.url),
+				"method": request.method,
+				"error_message": error_message,
+				"stack_trace": stack_trace
+			}).execute()
+	except Exception as db_err:
+		logger.error(f"Failed to log error to Supabase api_error_logs: {db_err}")
+		
+	# Return a graceful 500 error instead of a hard crash
+	return JSONResponse(
+		status_code=500,
+		content={"detail": "Internal Server Error. The failure has been logged."}
+	)
