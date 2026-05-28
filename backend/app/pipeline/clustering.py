@@ -25,6 +25,7 @@ class ClusteringConfig:
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
 	match_rpc: str = "match_posts"
+	min_cluster_size: int = 3
 
 
 def cluster_posts(
@@ -59,11 +60,15 @@ def cluster_posts(
 		if not cluster_ids:
 			cluster_ids = {seed_id}
 
+		unassigned -= cluster_ids
+
+		if len(cluster_ids) < config.min_cluster_size:
+			continue
+
 		trend_id = _create_trend(client, seed_id, len(cluster_ids), config)
 		examples = _select_top_examples(cluster_ids, post_by_id, config.top_k)
 		_insert_trend_examples(client, trend_id, examples, config)
 
-		unassigned -= cluster_ids
 		trends.append(
 			{
 				"trend_id": trend_id,
@@ -141,7 +146,7 @@ def _create_trend(client: Client, cluster_key: str, size: int, config: Clusterin
 	response = client.table(config.trends_table).insert(
 		{
 			"cluster_key": cluster_key,
-			"representative_count": min(size, config.top_k),
+			"representative_count": size,
 			"status": "pending_review",
 		}
 	).execute()

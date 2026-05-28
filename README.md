@@ -1,6 +1,6 @@
 # Open Paws TrendFinder
 
-Welcome to the **Open Paws TrendFinder**! This is an autonomous, end-to-end AI platform designed to ingest social media firehose data (like Bluesky and Reddit), semantically cluster them into emerging animal advocacy trends, and generate stunning, aesthetic visual content ready for publication.
+Welcome to the **Open Paws TrendFinder**! This is an autonomous, end-to-end AI platform designed to ingest social media firehose data (like Bluesky), semantically cluster them into emerging animal advocacy trends, and generate stunning, aesthetic visual content ready for publication.
 
 This repository contains both the heavy-duty **Python/FastAPI Backend** (featuring a 10-phase automated AI pipeline) and the beautiful **React/Vite Frontend** dashboard designed for human-in-the-loop review.
 
