@@ -242,6 +242,64 @@ def fetch_user_history(
 	return response.data or []
 
 
+def fetch_generation_by_trend(
+	user_id: str,
+	trend_id: str,
+	config: StorageConfig | None = None,
+) -> dict[str, Any] | None:
+	"""Fetch the most recent generated_content row for a specific trend."""
+	config = config or StorageConfig()
+	client = _create_client(config)
+
+	response = (
+		client.table(config.table_name)
+		.select("*")
+		.eq("user_id", user_id)
+		.eq("trend_id", trend_id)
+		.order("created_at", desc=True)
+		.limit(1)
+		.execute()
+	)
+	rows = response.data or []
+	return rows[0] if rows else None
+
+
+def update_generation_image(
+	user_id: str,
+	trend_id: str,
+	record_id: str,
+	image_bytes: bytes,
+	image_prompt: str,
+	config: StorageConfig | None = None,
+) -> str | None:
+	"""Uploads a new image and updates the generated_content record.
+
+	Returns the new public image URL, or None if it fails.
+	"""
+	config = config or StorageConfig()
+	client = _create_client(config)
+
+	try:
+		_, image_url = _upload_image(
+			client=client,
+			user_id=user_id,
+			trend_id=trend_id,
+			image_bytes=image_bytes,
+			config=config,
+		)
+	except Exception:
+		logger.exception("Regenerated image upload failed for trend=%s", trend_id)
+		return None
+
+	# Update the record with the new image URL and prompt
+	client.table(config.table_name).update({
+		"image_url": image_url,
+		"image_prompt": image_prompt,
+	}).eq("id", record_id).execute()
+
+	return image_url
+
+
 # ---------------------------------------------------------------------------
 # Supabase helpers
 # ---------------------------------------------------------------------------

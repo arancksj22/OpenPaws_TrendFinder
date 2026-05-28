@@ -19,6 +19,11 @@ class GenerateContentResponse(BaseModel):
 	storage: StorageSummary
 
 
+class RegenerateImageResponse(BaseModel):
+	trend_id: str
+	image_url: str | None
+
+
 class HistoryResponse(BaseModel):
 	items: list[dict[str, Any]]
 

@@ -242,11 +242,7 @@ def generate_content(
 		draft_posts.append(draft)
 
 	# ── Call 5: one infographic image via Imagen fast ─────────────────────
-	image_bytes, image_prompt_used = _generate_trend_image(
-		brief=brief,
-		client=client,
-		config=config,
-	)
+	image_bytes, image_prompt = generate_standalone_image(brief)
 
 	# ── Aggregate token usage ──────────────────────────────────────────────
 	total_prompt = _sum_tokens(
@@ -263,7 +259,7 @@ def generate_content(
 		total_prompt_tokens=total_prompt,
 		total_completion_tokens=total_completion,
 		image_bytes=image_bytes,
-		image_prompt_used=image_prompt_used,
+		image_prompt_used=image_prompt,
 	)
 
 
@@ -332,10 +328,8 @@ def _call(
 	}
 
 
-def _generate_trend_image(
+def generate_standalone_image(
 	brief: ContentBrief,
-	client: genai.Client,
-	config: GenerationConfig,
 ) -> tuple[bytes | None, str | None]:
 	"""Call Pollinations AI to generate one infographic-style PNG for the trend.
 

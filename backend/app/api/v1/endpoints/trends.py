@@ -8,16 +8,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.security import AuthContext, get_auth_context
 from app.pipeline.cybersec_check import load_cybersec_rules, sanitize_trend_payload
-from app.pipeline.generation import GenerationConfig, generate_content
+from app.pipeline.generation import ContentBrief, GenerationConfig, generate_content, generate_standalone_image
 from app.pipeline.humanintheloop import (
 	HumanInTheLoopConfig,
 	build_trend_payload,
 	fetch_trends_for_review,
 	generate_explainer,
 )
-from app.pipeline.production_storage import StorageConfig, store_generation
+from app.pipeline.production_storage import StorageConfig, store_generation, fetch_generation_by_trend, update_generation_image
 from app.pipeline.revalidation import RevalidationConfig, revalidate_and_score, serialise_result
-from app.schemas.content import GenerateContentResponse, StorageSummary
+from app.schemas.content import GenerateContentResponse, StorageSummary, RegenerateImageResponse
 from app.schemas.trend import (
 	ExplainerResponse,
 	TrendListResponse,
@@ -154,4 +154,50 @@ def generate_content_for_trend(
 			image_url=storage_result.image_url,
 			table=storage_result.table,
 		),
+	)
+
+
+@router.post("/{trend_id}/regenerate-image", response_model=RegenerateImageResponse)
+def regenerate_image_for_trend(
+	trend_id: str,
+	auth: AuthContext = Depends(get_auth_context),
+) -> RegenerateImageResponse:
+	"""Regenerates the artwork for a given trend and updates the existing record."""
+	# Fetch the existing generation record
+	existing = fetch_generation_by_trend(user_id=auth.user_id, trend_id=trend_id)
+	if not existing:
+		raise HTTPException(
+			status_code=status.HTTP_404_NOT_FOUND,
+			detail="No existing generation found to regenerate image for.",
+		)
+
+	# Reconstruct ContentBrief
+	brief = ContentBrief(
+		advocacy_brief=existing.get("advocacy_brief", ""),
+		positioning_angle=existing.get("positioning_angle", ""),
+		suggested_hashtags=existing.get("suggested_hashtags", []),
+		prompt_tokens=0,
+		completion_tokens=0,
+	)
+
+	# Call generation for image only
+	image_bytes, image_prompt = generate_standalone_image(brief)
+	if not image_bytes:
+		raise HTTPException(
+			status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+			detail="Failed to regenerate image.",
+		)
+
+	# Upload and update record
+	new_url = update_generation_image(
+		user_id=auth.user_id,
+		trend_id=trend_id,
+		record_id=str(existing["id"]),
+		image_bytes=image_bytes,
+		image_prompt=image_prompt or "",
+	)
+
+	return RegenerateImageResponse(
+		trend_id=trend_id,
+		image_url=new_url,
 	)

@@ -141,7 +141,7 @@ function DraftCard({ draft, metrics }) {
 
 // ─── GenerationResultPanel ───────────────────────────────────────────────────
 
-function GenerationResultPanel({ data }) {
+function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage }) {
   if (!data || !data.generation) return null
   const gen = data.generation
   const storage = data.storage
@@ -154,8 +154,27 @@ function GenerationResultPanel({ data }) {
       </div>
 
       {storage?.image_url && (
-        <div className="overflow-hidden rounded-2xl border border-border shadow-sm">
-          <img src={storage.image_url} alt="Generated visual" className="w-full object-cover" loading="lazy" />
+        <div className="flex flex-col gap-2">
+          <div className="overflow-hidden rounded-2xl border border-border shadow-sm relative group">
+            <img src={storage.image_url} alt="Generated visual" className="w-full object-cover" loading="lazy" />
+            {onRegenerateImage && (
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  onClick={onRegenerateImage}
+                  disabled={regeneratingImage}
+                  className="gap-2"
+                >
+                  <RefreshCw className={`w-4 h-4 ${regeneratingImage ? 'animate-spin' : ''}`} />
+                  {regeneratingImage ? 'Regenerating...' : 'Regenerate Artwork'}
+                </Button>
+              </div>
+            )}
+          </div>
+          {onRegenerateImage && (
+             <p className="text-[10px] text-muted-foreground text-center">Hover to regenerate artwork</p>
+          )}
         </div>
       )}
 
@@ -189,6 +208,7 @@ function ExplainerPanel({ data }) {
 function TrendCard({ trend, jwtToken }) {
   const [loading, setLoading] = useState(false)
   const [genLoading, setGenLoading] = useState(false)
+  const [regeneratingImage, setRegeneratingImage] = useState(false)
   const [explainer, setExplainer] = useState(
     trend.explainer
       ? {
@@ -248,6 +268,36 @@ function TrendCard({ trend, jwtToken }) {
       setError(e.message)
     } finally {
       setGenLoading(false)
+    }
+  }, [trend.trend_id, jwtToken])
+
+  const handleRegenerateImage = useCallback(async () => {
+    setRegeneratingImage(true)
+    setError(null)
+    try {
+      const res = await fetch(`${API_BASE}/${trend.trend_id}/regenerate-image`, {
+        method: 'POST',
+        headers: getHeaders()
+      })
+      if (!res.ok) {
+        const body = await res.text()
+        throw new Error(`${res.status} ${res.statusText}: ${body}`)
+      }
+      const data = await res.json()
+      setGeneration(prev => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          storage: {
+            ...prev.storage,
+            image_url: data.image_url
+          }
+        }
+      })
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setRegeneratingImage(false)
     }
   }, [trend.trend_id, jwtToken])
 
@@ -381,7 +431,11 @@ function TrendCard({ trend, jwtToken }) {
                 className="overflow-hidden"
               >
                 <div className="pt-2">
-                  <GenerationResultPanel data={generation} />
+                  <GenerationResultPanel 
+                    data={generation} 
+                    onRegenerateImage={handleRegenerateImage}
+                    regeneratingImage={regeneratingImage}
+                  />
                 </div>
               </motion.div>
             )}
