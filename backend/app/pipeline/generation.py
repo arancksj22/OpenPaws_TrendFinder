@@ -46,7 +46,7 @@ class GenerationConfig:
 	cerebras_api_key: str | None = None
 	cerebras_model: str = "gpt-oss-120b"
 	groq_api_key: str | None = None
-	groq_model: str = 
+	groq_model: str = "llama-3.1-8b-instant"
 	# Flash model for all calls — cheap and fast.
 	brief_model: str = "gpt-oss-120b"
 	draft_model: str = "gpt-oss-120b"
@@ -54,8 +54,8 @@ class GenerationConfig:
 	image_model: str = "imagen-4.0-fast-generate-001"
 	image_prompt_max_chars: int = 900
 	# Token budgets
-	brief_max_tokens: int = 8192
-	draft_max_tokens: int = 8192
+	brief_max_tokens: int = 2048
+	draft_max_tokens: int = 1024
 	# Temperature: low for brief (factual), slightly higher for creative drafts.
 	brief_temperature: float = 0.3
 	draft_temperature: float = 0.7
@@ -227,7 +227,7 @@ def generate_content(
 		explainer=explainer,
 		post_snippets=post_snippets,
 	)
-	brief_raw = _call_cerebras(brief_prompt, config, model=config.cerebras_model, system=_BRIEF_SYSTEM, max_tokens=config.brief_max_tokens, temperature=config.brief_temperature, response_mime_type="application/json")
+	brief_raw = _call_groq(brief_prompt, config, model=config.groq_model, system=_BRIEF_SYSTEM, max_tokens=config.brief_max_tokens, temperature=config.brief_temperature, response_mime_type="application/json")
 	brief = _parse_brief(brief_raw)
 
 	# ── Calls 2-4: three draft posts ───────────────────────────────────────
@@ -239,12 +239,7 @@ def generate_content(
 			positioning_angle=brief.positioning_angle,
 			hashtags=hashtag_str,
 		)
-		if i < 2:
-			# First two drafts via Cerebras
-			raw = _call_cerebras(prompt, config, model=config.draft_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
-		else:
-			# Third draft via Groq to distribute rate limits
-			raw = _call_groq(prompt, config, model=config.groq_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
+		raw = _call_groq(prompt, config, model=config.groq_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
 		
 		draft = _build_draft(raw["text"], tone, raw)
 		draft_posts.append(draft)
@@ -400,23 +395,21 @@ def generate_standalone_image(
 		import random
 
 		styles = [
-			"watercolor illustration",
-			"minimalist flat vector art",
-			"dramatic cinematic photography",
-			"dreamy pastel digital art",
-			"vibrant pop art poster style",
-			"clean corporate isometric 3d",
-			"hand-drawn sketch aesthetic"
+			"sober minimal vector art",
+			"clean modern line art design",
+			"elegant monochrome architectural aesthetic",
+			"sophisticated editorial illustration",
+			"minimalist contemporary graphic design"
 		]
 		style = random.choice(styles)
 
 		# Inject randomness via style and hashtags so the outputs are varied.
 		hashtags_str = " ".join(brief.suggested_hashtags[:3])
 		prompt = (
-			f"Powerful symbolic advocacy artwork. Subject: {brief.positioning_angle[:150]}. "
+			f"Minimalist, modern, and clean advocacy graphic. Subject: {brief.positioning_angle[:150]}. "
 			f"Style: {style}. Themes: {hashtags_str}. "
-			"Use striking abstract symbols, powerful metaphors, or evocative imagery rather than just literal animals. "
-			"No text. No words. Stunning aesthetic."
+			"Use sober, professional aesthetics, elegant typography-free composition, and lots of negative space. "
+			"No text. No words. Extremely clean and sophisticated."
 		)
 		
 		encoded_prompt = urllib.parse.quote(prompt)
@@ -426,7 +419,7 @@ def generate_standalone_image(
 			url, 
 			headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
 		)
-		with urllib.request.urlopen(req, timeout=30) as response:
+		with urllib.request.urlopen(req, timeout=120) as response:
 			image_bytes = response.read()
 
 		if image_bytes:
@@ -474,6 +467,10 @@ def _parse_brief(raw: dict[str, Any]) -> ContentBrief:
 def _build_draft(text: str, tone: str, raw: dict[str, Any]) -> DraftPost:
 	"""Build a DraftPost from a raw Gemini text response."""
 	text = text.strip()
+	
+	# Strip accidental wrapping quotes from LLM
+	if text.startswith('"') and text.endswith('"'):
+		text = text[1:-1].strip()
 
 	# Hard-enforce Bluesky 300-char limit — truncate at the last word boundary.
 	if len(text) > BLUESKY_MAX_CHARS:

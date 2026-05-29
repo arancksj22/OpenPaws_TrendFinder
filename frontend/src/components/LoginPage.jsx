@@ -87,6 +87,11 @@ export default function LoginPage({ onLogin }) {
           <p className="text-sm text-muted-foreground mt-0.5">
             {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
           </p>
+          <div className="mt-4 text-[11px] text-muted-foreground text-center bg-secondary/50 rounded-lg p-2.5 w-full border border-border/50">
+            <span className="font-semibold block mb-1 tracking-wider text-foreground">TEST LOGIN IS</span>
+            <span className="font-mono">test@openpaws.org</span><br/>
+            <span className="font-mono">password123</span>
+          </div>
         </div>
 
         {/* Tab switcher */}

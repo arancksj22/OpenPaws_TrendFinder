@@ -263,9 +263,9 @@ function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage, tre
             <img src={storage.image_url} alt="Generated visual" className="w-full object-cover" loading="lazy" />
             {onRegenerateImage && (
               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={onRegenerateImage}
                   disabled={regeneratingImage}
                   className="gap-2"
@@ -277,7 +277,7 @@ function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage, tre
             )}
           </div>
           {onRegenerateImage && (
-             <p className="text-[10px] text-muted-foreground text-center">Hover to regenerate artwork</p>
+            <p className="text-[10px] text-muted-foreground text-center">Hover to regenerate artwork</p>
           )}
         </div>
       )}
@@ -285,10 +285,10 @@ function GenerationResultPanel({ data, onRegenerateImage, regeneratingImage, tre
       <div className="flex flex-col gap-3">
         <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Scored Drafts</span>
         {gen.scored_drafts?.map(draft => (
-          <DraftCard 
-            key={draft.index} 
-            draft={draft} 
-            metrics={gen.score_meta?.metrics || []} 
+          <DraftCard
+            key={draft.index}
+            draft={draft}
+            metrics={gen.score_meta?.metrics || []}
             trendId={trendId}
             jwtToken={jwtToken}
             onUpdateDraft={onUpdateDraft}
@@ -323,12 +323,12 @@ function TrendCard({ trend, jwtToken }) {
   const [explainer, setExplainer] = useState(
     trend.explainer
       ? {
-          trend_id: trend.trend_id,
-          explainer: trend.explainer,
-          model_used: '—',
-          prompt_tokens: null,
-          completion_tokens: null,
-        }
+        trend_id: trend.trend_id,
+        explainer: trend.explainer,
+        model_used: '—',
+        prompt_tokens: null,
+        completion_tokens: null,
+      }
       : null
   )
   const [generation, setGeneration] = useState(null)
@@ -560,8 +560,8 @@ function TrendCard({ trend, jwtToken }) {
                 className="overflow-hidden"
               >
                 <div className="pt-2">
-                  <GenerationResultPanel 
-                    data={generation} 
+                  <GenerationResultPanel
+                    data={generation}
                     onRegenerateImage={handleRegenerateImage}
                     regeneratingImage={regeneratingImage}
                     trendId={trend.trend_id}
@@ -633,14 +633,27 @@ export default function App() {
 
   // ── Auth state ────────────────────────────────────────────────────────────
   const [authChecked, setAuthChecked] = useState(false) // has /me been called?
-  const [authed, setAuthed]           = useState(false)
-  const [authToken, setAuthToken]     = useState(null)
-  const [authUser, setAuthUser]       = useState(null)  // { id, email }
+  const [authed, setAuthed] = useState(false)
+  const [authToken, setAuthToken] = useState(null)
+  const [authUser, setAuthUser] = useState(null)  // { id, email }
   const [showDiscordBanner, setShowDiscordBanner] = useState(true)
 
   // On mount: validate any stored token with /me
   useEffect(() => {
-    const storedToken = localStorage.getItem('openpaws_jwt')
+    let storedToken = localStorage.getItem('openpaws_jwt')
+    
+    // Parse Supabase hash fragment for email confirmation redirects
+    const hash = window.location.hash.substring(1)
+    if (hash) {
+      const params = new URLSearchParams(hash)
+      const hashToken = params.get('access_token')
+      if (hashToken) {
+        storedToken = hashToken
+        localStorage.setItem('openpaws_jwt', hashToken)
+        window.history.replaceState(null, null, window.location.pathname)
+      }
+    }
+
     if (!storedToken) { setAuthChecked(true); return }
     fetch(`${AUTH_API}/me`, {
       headers: { Authorization: `Bearer ${storedToken}` }
@@ -814,11 +827,10 @@ export default function App() {
               <button
                 key={t.id}
                 onClick={() => setCurrentView(t.id)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 ${
-                  currentView === t.id
+                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-all duration-150 ${currentView === t.id
                     ? 'border-primary text-primary'
                     : 'border-transparent text-muted-foreground hover:text-foreground'
-                }`}
+                  }`}
               >
                 {t.label}
               </button>
@@ -919,15 +931,15 @@ export default function App() {
                 </div>
               </div>
               <div className="flex items-center gap-3 relative z-10">
-                <Button 
-                  variant="secondary" 
-                  size="sm" 
+                <Button
+                  variant="secondary"
+                  size="sm"
                   className="bg-white text-indigo-600 hover:bg-indigo-50"
-                  onClick={() => window.open('https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=274877959168&scope=bot', '_blank')}
+                  onClick={() => window.open('https://discord.com/api/oauth2/authorize?client_id=1509419627489263696&permissions=274877959168&scope=bot', '_blank')}
                 >
                   Invite Bot
                 </Button>
-                <button 
+                <button
                   onClick={() => setShowDiscordBanner(false)}
                   className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-indigo-100 hover:text-white"
                 >
@@ -952,15 +964,15 @@ export default function App() {
               className="flex flex-col items-center justify-center py-32 gap-6"
             >
               <div className="relative flex items-center justify-center w-20 h-20">
-                <motion.div 
-                  animate={{ rotate: 360 }} 
+                <motion.div
+                  animate={{ rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
                   className="absolute inset-0 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 shadow-[0_0_20px_rgba(16,185,129,0.3)]"
                 />
                 <Sparkles className="w-8 h-8 text-emerald-500 animate-pulse" />
               </div>
               <div className="flex flex-col items-center gap-2">
-                <motion.p 
+                <motion.p
                   animate={{ opacity: [0.5, 1, 0.5] }}
                   transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
                   className="text-sm font-semibold tracking-wider text-emerald-600 uppercase"
@@ -984,8 +996,8 @@ export default function App() {
               className="mb-6 overflow-hidden rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 flex items-center gap-4"
             >
               <div className="relative flex items-center justify-center w-10 h-10 shrink-0">
-                <motion.div 
-                  animate={{ rotate: 360 }} 
+                <motion.div
+                  animate={{ rotate: 360 }}
                   transition={{ repeat: Infinity, duration: 2, ease: "linear" }}
                   className="absolute inset-0 rounded-full border-2 border-emerald-500/20 border-t-emerald-500"
                 />

@@ -30,6 +30,8 @@ class HumanInTheLoopConfig:
 	supabase_service_role_key: str | None = None
 	cerebras_api_key: str | None = None
 	cerebras_model: str = "gpt-oss-120b"
+	groq_api_key: str | None = None
+	groq_model: str = "llama-3.1-8b-instant"
 	text_model: str = "gpt-oss-120b"
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
@@ -118,12 +120,12 @@ def generate_explainer(
 
 	# 3. Build prompt and call Groq.
 	prompt = _build_explainer_prompt(example_posts)
-	cerebras_result = _call_cerebras(prompt, config)
+	groq_result = _call_groq(prompt, config)
 
-	explainer_text = cerebras_result["text"]
-	model_used = cerebras_result["model"]
-	prompt_tokens = cerebras_result.get("prompt_tokens")
-	completion_tokens = cerebras_result.get("completion_tokens")
+	explainer_text = groq_result["text"]
+	model_used = groq_result["model"]
+	prompt_tokens = groq_result.get("prompt_tokens")
+	completion_tokens = groq_result.get("completion_tokens")
 
 	# 4. Write explainer back to Supabase and update status.
 	_update_trend_explainer(client, trend_id, explainer_text, config)
@@ -283,19 +285,19 @@ def _build_explainer_prompt(example_posts: list[dict[str, Any]]) -> str:
 	wait=wait_exponential(multiplier=1, min=2, max=10),
 	retry=retry_if_exception_type(openai.RateLimitError)
 )
-def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
-	"""Call Cerebras Inference API and return the text response with token usage."""
-	api_key = config.cerebras_api_key or os.getenv("CEREBRAS_API_KEY")
+def _call_groq(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
+	"""Call Groq API and return the text response with token usage."""
+	api_key = config.groq_api_key or os.getenv("GROQ_API_KEY")
 	if not api_key:
-		raise RuntimeError("Missing CEREBRAS_API_KEY")
+		raise RuntimeError("Missing GROQ_API_KEY")
 
 	client = openai.OpenAI(
-		base_url="https://api.cerebras.ai/v1",
+		base_url="https://api.groq.com/openai/v1",
 		api_key=api_key
 	)
 
 	response = client.chat.completions.create(
-		model=config.cerebras_model,
+		model="llama-3.1-8b-instant",
 		messages=[
 			{"role": "system", "content": _EXPLAINER_SYSTEM_PROMPT},
 			{"role": "user", "content": prompt}
