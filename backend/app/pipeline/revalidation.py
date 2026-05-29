@@ -101,7 +101,7 @@ class RevalidationConfig:
 	cache_dir: str | None = None
 
 	def resolved_api_url(self) -> str | None:
-		return self.hf_api_url or os.getenv("OPENPAWS_HUGGINGFACE_API_URL") or None
+		return self.hf_api_url or os.getenv("OPENPAWS_HUGGINGFACE_API_URL") or "https://router.huggingface.co/hf-inference/models"
 
 	def resolved_api_token(self) -> str | None:
 		return self.hf_api_token or os.getenv("HF_API_TOKEN") or None
