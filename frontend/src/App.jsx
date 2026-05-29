@@ -586,10 +586,8 @@ function HistoryItem({ item }) {
       advocacy_brief: item.advocacy_brief,
       score_meta: {
         metrics: [
+          { key: "text_performance", label: "Text Performance" },
           { key: "advocacy_preference", label: "Advocacy Preference" },
-          { key: "potential_influence", label: "Potential Influence" },
-          { key: "emotional_impact", label: "Emotional Impact" },
-          { key: "animal_alignment", label: "Animal Alignment" },
         ]
       },
       scored_drafts: item.scored_drafts,

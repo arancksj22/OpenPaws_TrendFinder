@@ -45,23 +45,20 @@ logger = logging.getLogger(__name__)
 BLUESKY_MAX_CHARS = 300
 
 # ---------------------------------------------------------------------------
-# The five OpenPaws scoring models
-# Each key becomes a field name on PostScores.
+# Configuration & Constants
 # ---------------------------------------------------------------------------
 
-SCORING_MODELS: dict[str, str] = {
-	"advocacy_preference":   "open-paws/animal_advocate_preference_prediction_shortform",
-	"potential_influence":   "open-paws/potential_influence_prediction_shortform",
-	"emotional_impact":      "open-paws/emotional_impact_prediction_shortform",
-	"animal_alignment":      "open-paws/animal_alignment_prediction_shortform",
+
+# Mappings of our scoring metrics to the dedicated HF Inference Endpoints
+SCORING_ENDPOINTS: dict[str, str] = {
+	"text_performance":    "https://sfls2rprh8t01n7a.us-east-1.aws.endpoints.huggingface.cloud/",
+	"advocacy_preference": "https://mf2er92o1uu8v7z2.us-east-1.aws.endpoints.huggingface.cloud/",
 }
 
-# Weights used to compute the composite score (must sum to 1.0).
+# The weights used to calculate the composite score. Must sum to 1.0.
 _WEIGHTS: dict[str, float] = {
-	"advocacy_preference":  0.30,
-	"potential_influence":  0.25,
-	"emotional_impact":     0.25,
-	"animal_alignment":     0.20,
+	"text_performance":     0.50,
+	"advocacy_preference":  0.50,
 }
 
 # Process-level cache: model_name → (model, tokenizer)
@@ -100,11 +97,8 @@ class RevalidationConfig:
 	device: str = "cpu"
 	cache_dir: str | None = None
 
-	def resolved_api_url(self) -> str | None:
-		return self.hf_api_url or os.getenv("OPENPAWS_HUGGINGFACE_API_URL") or "https://router.huggingface.co/hf-inference/models"
-
 	def resolved_api_token(self) -> str | None:
-		return self.hf_api_token or os.getenv("HF_API_TOKEN") or None
+		return self.hf_api_token or os.getenv("HF_API_TOKEN")
 
 
 # ---------------------------------------------------------------------------
@@ -116,10 +110,8 @@ class RevalidationConfig:
 class PostScores:
 	"""Four individual model scores plus a weighted composite for one draft post."""
 
-	advocacy_preference: float   # open-paws/animal_advocate_preference_prediction_shortform
-	potential_influence: float   # open-paws/potential_influence_prediction_shortform
-	emotional_impact: float      # open-paws/emotional_impact_prediction_shortform
-	animal_alignment: float      # open-paws/animal_alignment_prediction_shortform
+	text_performance: float      # Text performance prediction
+	advocacy_preference: float   # Animal advocacy preference prediction
 	composite: float             # weighted average of the above four
 
 
@@ -245,10 +237,10 @@ def _boundary_check(draft: DraftPost) -> tuple[bool, list[str]]:
 
 def _score_text(text: str, config: RevalidationConfig) -> PostScores:
 	"""Score ``text`` against all five OpenPaws models."""
-	api_url = config.resolved_api_url()
+	api_url = config.hf_api_url
 
 	if api_url:
-		raw = _score_via_api(text, api_url, config.resolved_api_token())
+		raw = _score_via_api(text, config.resolved_api_token())
 	else:
 		raw = _score_via_local(text, config)
 
@@ -262,20 +254,16 @@ def _build_post_scores(raw: dict[str, float]) -> PostScores:
 		for metric in _WEIGHTS
 	)
 	return PostScores(
+		text_performance=raw.get("text_performance", 0.0),
 		advocacy_preference=raw.get("advocacy_preference", 0.0),
-		potential_influence=raw.get("potential_influence", 0.0),
-		emotional_impact=raw.get("emotional_impact", 0.0),
-		animal_alignment=raw.get("animal_alignment", 0.0),
 		composite=round(float(np.clip(composite, 0.0, 1.0)), 4),
 	)
 
 
 def _zero_scores() -> PostScores:
 	return PostScores(
+		text_performance=0.0,
 		advocacy_preference=0.0,
-		potential_influence=0.0,
-		emotional_impact=0.0,
-		animal_alignment=0.0,
 		composite=0.0,
 	)
 
@@ -287,10 +275,9 @@ def _zero_scores() -> PostScores:
 
 def _score_via_api(
 	text: str,
-	base_url: str,
 	token: str | None,
 ) -> dict[str, float]:
-	"""Call the hosted OpenPaws endpoint for each model via HTTP POST."""
+	"""Call the hosted OpenPaws dedicated endpoints via HTTP POST."""
 	try:
 		import httpx
 	except ImportError as exc:
@@ -304,22 +291,26 @@ def _score_via_api(
 		headers["Authorization"] = f"Bearer {token.strip()}"
 
 	raw: dict[str, float] = {}
-	base_url = base_url.strip().rstrip("/")
 
 	with httpx.Client(timeout=30) as client:
-		for metric, model_name in SCORING_MODELS.items():
-			url = f"{base_url}/{model_name}"
+		for metric, url in SCORING_ENDPOINTS.items():
+			# Inference endpoints use the standard pipeline payload
+			payload = {"inputs": text}
+
 			try:
-				response = client.post(url, json={"inputs": text}, headers=headers)
+				response = client.post(url, json=payload, headers=headers)
 				response.raise_for_status()
 				data = response.json()
-				# HuggingFace text-classification pipeline returns:
-				# [[{"label": "LABEL_0", "score": 0.856}]]
-				score = _extract_api_score(data)
+				
+				if "score" in data and isinstance(data["score"], (float, int)):
+					score = float(data["score"])
+				else:
+					score = _extract_api_score(data)
+
 				raw[metric] = float(np.clip(score, 0.0, 1.0))
-				logger.debug("API score %s=%s for model %s", metric, raw[metric], model_name)
-			except Exception:
-				logger.exception("Failed to score metric=%s via API; defaulting to 0.0", metric)
+				logger.debug("API score %s=%s", metric, raw[metric])
+			except Exception as exc:
+				logger.error("Failed to score metric=%s via API; defaulting to 0.0", metric, exc_info=True)
 				raw[metric] = 0.0
 
 	return raw
@@ -366,7 +357,9 @@ def _score_via_local(
 
 	raw: dict[str, float] = {}
 
-	for metric, model_name in SCORING_MODELS.items():
+	# Note: In local mode, one would typically iterate over pre-defined model paths
+	# This implementation assumes the SCORING_ENDPOINTS keys are valid model identifiers
+	for metric, model_name in SCORING_ENDPOINTS.items():
 		try:
 			model, tokenizer = _load_model(model_name, config, AutoModelForSequenceClassification, AutoTokenizer)
 			inputs = tokenizer(
@@ -447,10 +440,8 @@ def _pick_recommended(scored_drafts: list[ScoredDraft]) -> int:
 
 # Human-readable labels for each scoring metric.
 _SCORE_LABELS: dict[str, str] = {
+	"text_performance":    "Text Performance",
 	"advocacy_preference": "Advocacy Preference",
-	"potential_influence": "Potential Influence",
-	"emotional_impact":    "Emotional Impact",
-	"animal_alignment":    "Animal Alignment",
 }
 
 # Weights re-exposed for the frontend tooltip / legend.
@@ -509,7 +500,7 @@ def serialise_result(result: RevalidationResult) -> dict[str, Any]:
 				"label":  _SCORE_LABELS[key],
 				"weight": _WEIGHTS[key],
 			}
-			for key in SCORING_MODELS
+			for key in _WEIGHTS
 		]
 	}
 
@@ -526,10 +517,8 @@ def serialise_result(result: RevalidationResult) -> dict[str, Any]:
 				"boundary_issues":       sd.boundary_issues,
 				"is_recommended":        i == result.recommended_index,
 				"scores": {
+					"text_performance":    sd.scores.text_performance,
 					"advocacy_preference": sd.scores.advocacy_preference,
-					"potential_influence": sd.scores.potential_influence,
-					"emotional_impact":    sd.scores.emotional_impact,
-					"animal_alignment":    sd.scores.animal_alignment,
 					"composite":           sd.scores.composite,
 				},
 			}
