@@ -14,9 +14,10 @@ import {
   Copy, Check, Edit2, Download, Save, X
 } from 'lucide-react'
 
-const API_BASE = '/api/v1/trends'
-const HISTORY_API = '/api/v1/history'
-const AUTH_API = '/api/v1/auth'
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
+const API_BASE = `${BASE_URL}/api/v1/trends`
+const HISTORY_API = `${BASE_URL}/api/v1/history`
+const AUTH_API = `${BASE_URL}/api/v1/auth`
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -728,14 +729,14 @@ export default function App() {
     setPipelineLoading(true)
     setError(null)
     try {
-      const trigRes = await fetch('/api/v1/pipeline/trigger', {
+      const trigRes = await fetch(`${BASE_URL}/api/v1/pipeline/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ trigger: 'ui', async_run: false })
       })
       if (!trigRes.ok) throw new Error(`Trigger failed: ${trigRes.statusText}`)
 
-      const discRes = await fetch('/api/v1/pipeline/discover', {
+      const discRes = await fetch(`${BASE_URL}/api/v1/pipeline/discover`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getHeaders() },
         body: JSON.stringify({ drain: true })
