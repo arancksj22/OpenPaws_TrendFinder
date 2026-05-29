@@ -29,7 +29,8 @@ class HumanInTheLoopConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
 	cerebras_api_key: str | None = None
-	text_model: str = "gpt-oss-120b"
+	cerebras_model: str = "gpt-oss-20b"
+	text_model: str = "gpt-oss-20b"
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
 	posts_table: str = "posts"
@@ -115,7 +116,7 @@ def generate_explainer(
 	# 2. Fetch example posts.
 	example_posts = _fetch_example_posts(client, trend_id, config)
 
-	# 3. Build prompt and call Cerebras.
+	# 3. Build prompt and call Groq.
 	prompt = _build_explainer_prompt(example_posts)
 	cerebras_result = _call_cerebras(prompt, config)
 
@@ -294,7 +295,7 @@ def _call_cerebras(prompt: str, config: HumanInTheLoopConfig) -> dict[str, Any]:
 	)
 
 	response = client.chat.completions.create(
-		model=config.text_model,
+		model=config.cerebras_model,
 		messages=[
 			{"role": "system", "content": _EXPLAINER_SYSTEM_PROMPT},
 			{"role": "user", "content": prompt}

@@ -44,9 +44,10 @@ BLUESKY_MAX_CHARS = 300
 class GenerationConfig:
 	gemini_api_key: str | None = None
 	cerebras_api_key: str | None = None
+	cerebras_model: str = "gpt-oss-20b"
 	# Flash model for all calls — cheap and fast.
-	brief_model: str = "gpt-oss-120b"
-	draft_model: str = "gpt-oss-120b"
+	brief_model: str = "gpt-oss-20b"
+	draft_model: str = "gpt-oss-20b"
 	# Imagen fast model for the single infographic image.
 	image_model: str = "imagen-4.0-fast-generate-001"
 	image_prompt_max_chars: int = 900
@@ -224,8 +225,7 @@ def generate_content(
 		explainer=explainer,
 		post_snippets=post_snippets,
 	)
-	brief_raw = _call(config, brief_prompt, _BRIEF_SYSTEM, config.brief_model,
-	                  config.brief_max_tokens, config.brief_temperature, "application/json")
+	brief_raw = _call_cerebras(brief_prompt, config, model=config.cerebras_model, system=_BRIEF_SYSTEM, max_tokens=config.brief_max_tokens, temperature=config.brief_temperature, response_mime_type="application/json")
 	brief = _parse_brief(brief_raw)
 
 	# ── Calls 2-4: three draft posts ───────────────────────────────────────
@@ -237,8 +237,7 @@ def generate_content(
 			positioning_angle=brief.positioning_angle,
 			hashtags=hashtag_str,
 		)
-		raw = _call(config, prompt, _DRAFT_SYSTEM, config.draft_model,
-		            config.draft_max_tokens, config.draft_temperature)
+		raw = _call_cerebras(prompt, config, model=config.draft_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
 		draft = _build_draft(raw["text"], tone, raw)
 		draft_posts.append(draft)
 
@@ -281,9 +280,9 @@ def _build_client(config: GenerationConfig) -> genai.Client:
 	wait=wait_exponential(multiplier=1, min=2, max=10),
 	retry=retry_if_exception_type(openai.RateLimitError)
 )
-def _call(
-	config: GenerationConfig,
+def _call_cerebras(
 	prompt: str,
+	config: GenerationConfig,
 	system: str,
 	model: str,
 	max_tokens: int,
@@ -291,8 +290,7 @@ def _call(
 	response_mime_type: str | None = None,
 ) -> dict[str, Any]:
 	"""Make a single content-generation call using Cerebras.
-
-	Returns a dict with keys ``text``, ``prompt_tokens``, ``completion_tokens``.
+	Uses the cerebras API key and defaults to gpt-oss-20b.
 	"""
 	api_key = config.cerebras_api_key or os.getenv("CEREBRAS_API_KEY")
 	if not api_key:
