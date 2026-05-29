@@ -301,10 +301,10 @@ def _score_via_api(
 
 	headers: dict[str, str] = {"Content-Type": "application/json"}
 	if token:
-		headers["Authorization"] = f"Bearer {token}"
+		headers["Authorization"] = f"Bearer {token.strip()}"
 
 	raw: dict[str, float] = {}
-	base_url = base_url.rstrip("/")
+	base_url = base_url.strip().rstrip("/")
 
 	with httpx.Client(timeout=30) as client:
 		for metric, model_name in SCORING_MODELS.items():
