@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 import os
 from dataclasses import dataclass, field
 from typing import Any
@@ -301,6 +302,10 @@ def _call(
 		base_url="https://api.cerebras.ai/v1",
 		api_key=api_key
 	)
+
+	# Cerebras Free Tier has a strict 30 RPM rate limit.
+	# We sleep for 2.5 seconds before every request to safely avoid the 429 1-minute timeout penalty.
+	time.sleep(2.5)
 
 	kwargs = {}
 	if response_mime_type == "application/json":

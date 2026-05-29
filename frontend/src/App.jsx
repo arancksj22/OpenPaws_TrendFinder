@@ -692,7 +692,7 @@ export default function App() {
     setError(null)
     try {
       const params = new URLSearchParams({ limit: 20, offset: 0 })
-      if (statusFilter) params.set('status', statusFilter)
+      params.set('status', statusFilter)
       const res = await fetch(`${API_BASE}/?${params}`, { headers: getHeaders() })
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
       const data = await res.json()
