@@ -29,8 +29,8 @@ class HumanInTheLoopConfig:
 	supabase_url: str | None = None
 	supabase_service_role_key: str | None = None
 	cerebras_api_key: str | None = None
-	cerebras_model: str = "gpt-oss-20b"
-	text_model: str = "gpt-oss-20b"
+	cerebras_model: str = "gpt-oss-120b"
+	text_model: str = "gpt-oss-120b"
 	trends_table: str = "trends"
 	trend_examples_table: str = "trend_examples"
 	posts_table: str = "posts"

@@ -44,10 +44,12 @@ BLUESKY_MAX_CHARS = 300
 class GenerationConfig:
 	gemini_api_key: str | None = None
 	cerebras_api_key: str | None = None
-	cerebras_model: str = "gpt-oss-20b"
+	cerebras_model: str = "gpt-oss-120b"
+	groq_api_key: str | None = None
+	groq_model: str = 
 	# Flash model for all calls — cheap and fast.
-	brief_model: str = "gpt-oss-20b"
-	draft_model: str = "gpt-oss-20b"
+	brief_model: str = "gpt-oss-120b"
+	draft_model: str = "gpt-oss-120b"
 	# Imagen fast model for the single infographic image.
 	image_model: str = "imagen-4.0-fast-generate-001"
 	image_prompt_max_chars: int = 900
@@ -231,13 +233,19 @@ def generate_content(
 	# ── Calls 2-4: three draft posts ───────────────────────────────────────
 	hashtag_str = " ".join(f"#{t}" for t in brief.suggested_hashtags)
 	draft_posts: list[DraftPost] = []
-	for tone in ("factual", "emotional", "call_to_action"):
+	for i, tone in enumerate(["factual", "emotional", "call_to_action"]):
 		prompt = _DRAFT_TEMPLATES[tone].format(
 			advocacy_brief=brief.advocacy_brief,
 			positioning_angle=brief.positioning_angle,
 			hashtags=hashtag_str,
 		)
-		raw = _call_cerebras(prompt, config, model=config.draft_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
+		if i < 2:
+			# First two drafts via Cerebras
+			raw = _call_cerebras(prompt, config, model=config.draft_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
+		else:
+			# Third draft via Groq to distribute rate limits
+			raw = _call_groq(prompt, config, model=config.groq_model, system=_DRAFT_SYSTEM, max_tokens=config.draft_max_tokens, temperature=config.draft_temperature)
+		
 		draft = _build_draft(raw["text"], tone, raw)
 		draft_posts.append(draft)
 
@@ -304,6 +312,53 @@ def _call_cerebras(
 	# Cerebras Free Tier has a strict 30 RPM rate limit.
 	# We sleep for 2.5 seconds before every request to safely avoid the 429 1-minute timeout penalty.
 	time.sleep(2.5)
+
+	kwargs = {}
+	if response_mime_type == "application/json":
+		kwargs["response_format"] = {"type": "json_object"}
+
+	response = client.chat.completions.create(
+		model=model,
+		messages=[
+			{"role": "system", "content": system},
+			{"role": "user", "content": prompt}
+		],
+		max_tokens=max_tokens,
+		temperature=temperature,
+		**kwargs
+	)
+
+	text = response.choices[0].message.content or ""
+	
+	return {
+		"text": text,
+		"model": model,
+		"prompt_tokens": response.usage.prompt_tokens if response.usage else 0,
+		"completion_tokens": response.usage.completion_tokens if response.usage else 0,
+	}
+
+@retry(
+	wait=wait_exponential(multiplier=1, min=2, max=10),
+	retry=retry_if_exception_type(openai.RateLimitError)
+)
+def _call_groq(
+	prompt: str,
+	config: GenerationConfig,
+	system: str,
+	model: str,
+	max_tokens: int,
+	temperature: float,
+	response_mime_type: str | None = None,
+) -> dict[str, Any]:
+	"""Make a single content-generation call using Groq."""
+	api_key = config.groq_api_key or os.getenv("GROQ_API_KEY")
+	if not api_key:
+		raise RuntimeError("Missing GROQ_API_KEY")
+
+	client = openai.OpenAI(
+		base_url="https://api.groq.com/openai/v1",
+		api_key=api_key
+	)
 
 	kwargs = {}
 	if response_mime_type == "application/json":

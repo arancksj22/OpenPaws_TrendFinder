@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './component
 import {
   RefreshCw, Play, Sparkles, ChevronDown, ExternalLink,
   Activity, TrendingUp, Heart, Shield, Star, AlertTriangle, Clock, Hash, LogOut,
-  Copy, Check, Edit2, Download, Save, X
+  Copy, Check, Edit2, Download, Save, X, Bot
 } from 'lucide-react'
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL || ''
@@ -636,6 +636,7 @@ export default function App() {
   const [authed, setAuthed]           = useState(false)
   const [authToken, setAuthToken]     = useState(null)
   const [authUser, setAuthUser]       = useState(null)  // { id, email }
+  const [showDiscordBanner, setShowDiscordBanner] = useState(true)
 
   // On mount: validate any stored token with /me
   useEffect(() => {
@@ -899,6 +900,46 @@ export default function App() {
 
       {/* ── Main ── */}
       <main className="flex-1 max-w-6xl mx-auto w-full px-6 py-8">
+
+        <AnimatePresence>
+          {showDiscordBanner && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="mb-6 relative overflow-hidden rounded-xl bg-indigo-600 px-6 py-4 flex items-center justify-between text-white shadow-md shadow-indigo-500/20"
+            >
+              <div className="flex items-center gap-4 relative z-10">
+                <div className="bg-white/20 p-2 rounded-lg backdrop-blur-sm">
+                  <Bot className="w-6 h-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-white">Bring OpenPaws to your Discord Server!</h3>
+                  <p className="text-sm text-indigo-100">Review trends and generate content directly from your Discord channels with our official bot.</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 relative z-10">
+                <Button 
+                  variant="secondary" 
+                  size="sm" 
+                  className="bg-white text-indigo-600 hover:bg-indigo-50"
+                  onClick={() => window.open('https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=274877959168&scope=bot', '_blank')}
+                >
+                  Invite Bot
+                </Button>
+                <button 
+                  onClick={() => setShowDiscordBanner(false)}
+                  className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-indigo-100 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              {/* Decorative background elements */}
+              <div className="absolute right-0 top-0 w-64 h-64 bg-white/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/3" />
+              <div className="absolute left-1/2 bottom-0 w-32 h-32 bg-black/5 rounded-full blur-2xl translate-y-1/2" />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         <AnimatePresence mode="wait">
           {loading && (
