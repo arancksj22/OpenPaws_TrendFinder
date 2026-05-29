@@ -69,6 +69,11 @@ class LoginResponse(BaseModel):
 	user: UserInfo
 
 
+class SignupRequest(BaseModel):
+	email: str
+	password: str
+
+
 class MeResponse(BaseModel):
 	user_id: str
 	email: str | None = None
@@ -114,6 +119,60 @@ async def login(body: LoginRequest) -> LoginResponse:
 
 	return LoginResponse(
 		access_token=data["access_token"],
+		token_type="bearer",
+		user=UserInfo(
+			id=user_data.get("id", ""),
+			email=user_data.get("email"),
+		),
+	)
+
+
+@router.post("/signup", response_model=LoginResponse, status_code=status.HTTP_201_CREATED)
+async def signup(body: SignupRequest) -> LoginResponse:
+	"""Register a new user via Supabase Auth and return a session token.
+
+	Proxies to Supabase /auth/v1/signup. If the email is already registered,
+	Supabase returns a 400 which we forward as a 409 Conflict.
+	"""
+	auth_url = _supabase_auth_url()
+	headers = _supabase_headers()
+
+	try:
+		async with httpx.AsyncClient(timeout=10.0) as client:
+			resp = await client.post(
+				f"{auth_url}/signup",
+				headers=headers,
+				json={"email": body.email, "password": body.password},
+			)
+	except httpx.RequestError as exc:
+		logger.exception("Failed to reach Supabase Auth during signup")
+		raise HTTPException(
+			status_code=status.HTTP_502_BAD_GATEWAY,
+			detail=f"Could not reach authentication service: {exc}",
+		)
+
+	data = resp.json()
+
+	if resp.status_code not in (200, 201):
+		try:
+			detail = data.get("error_description") or data.get("msg") or data.get("message") or resp.text
+		except Exception:
+			detail = resp.text
+		http_status = status.HTTP_409_CONFLICT if resp.status_code == 400 else status.HTTP_400_BAD_REQUEST
+		raise HTTPException(status_code=http_status, detail=detail or "Signup failed")
+
+	# Supabase returns a session immediately if email confirmation is disabled.
+	# If confirmation is required, access_token will be absent — tell the user.
+	access_token = data.get("access_token")
+	if not access_token:
+		raise HTTPException(
+			status_code=status.HTTP_202_ACCEPTED,
+			detail="confirm_email",
+		)
+
+	user_data = data.get("user") or {}
+	return LoginResponse(
+		access_token=access_token,
 		token_type="bearer",
 		user=UserInfo(
 			id=user_data.get("id", ""),
