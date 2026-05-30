@@ -68,10 +68,18 @@ class RedisQueue:
 		return await self._client.xadd(**kwargs)
 
 	async def enqueue_many(self, payloads: Iterable[dict[str, Any]]) -> list[str]:
-		message_ids: list[str] = []
+		pipeline = self._client.pipeline()
 		for payload in payloads:
-			message_ids.append(await self.enqueue(payload))
-		return message_ids
+			data = {"payload": _serialize_payload(payload)}
+			kwargs: dict[str, Any] = {"name": self._config.stream_name, "fields": data}
+			if self._config.max_len is not None:
+				kwargs["maxlen"] = self._config.max_len
+				kwargs["approximate"] = True
+			pipeline.xadd(**kwargs)
+		
+		# Execute all XADD commands in a single network roundtrip to avoid Upstash timeouts
+		results = await pipeline.execute()
+		return [str(res) for res in results]
 
 	async def dequeue(self, count: int = 1) -> list[QueueMessage]:
 		# block=None means non-blocking — returns immediately if queue is empty.
