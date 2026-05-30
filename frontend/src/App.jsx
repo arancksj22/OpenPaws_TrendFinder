@@ -741,24 +741,29 @@ export default function App() {
     setPipelineLoading(true)
     setError(null)
     try {
+      // Always use async_run: true — synchronous mode times out on Render (30s limit)
       const trigRes = await fetch(`${BASE_URL}/api/v1/pipeline/trigger`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...getHeaders() },
-        body: JSON.stringify({ trigger: 'ui', async_run: false })
+        body: JSON.stringify({ trigger: 'ui', async_run: true })
       })
       if (!trigRes.ok) throw new Error(`Trigger failed: ${trigRes.statusText}`)
 
-      const discRes = await fetch(`${BASE_URL}/api/v1/pipeline/discover`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...getHeaders() },
-        body: JSON.stringify({ drain: true })
-      })
-      if (!discRes.ok) throw new Error(`Discovery failed: ${discRes.statusText}`)
-
-      await loadTrends()
+      // Pipeline runs in the background — auto-refresh trends after 30s to pick up results
+      setTimeout(async () => {
+        try {
+          const discRes = await fetch(`${BASE_URL}/api/v1/pipeline/discover`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...getHeaders() },
+            body: JSON.stringify({ drain: true })
+          })
+          if (discRes.ok) await loadTrends()
+        } catch (_) { /* non-fatal */ } finally {
+          setPipelineLoading(false)
+        }
+      }, 30000)
     } catch (e) {
       setError(e.message)
-    } finally {
       setPipelineLoading(false)
     }
   }, [getHeaders, loadTrends])

@@ -49,7 +49,12 @@ class RedisQueue:
 
 	@classmethod
 	async def create(cls, config: RedisQueueConfig) -> "RedisQueue":
-		client = redis.from_url(config.url, decode_responses=True)
+		client = redis.from_url(
+			config.url,
+			decode_responses=True,
+			socket_timeout=10,
+			socket_connect_timeout=10,
+		)
 		queue = cls(client, config)
 		await queue._ensure_group()
 		return queue
@@ -69,12 +74,14 @@ class RedisQueue:
 		return message_ids
 
 	async def dequeue(self, count: int = 1) -> list[QueueMessage]:
+		# block=None means non-blocking — returns immediately if queue is empty.
+		# Blocking reads hold the TCP connection open and time out on hosted Redis (Upstash).
 		response = await self._client.xreadgroup(
 			groupname=self._config.group_name,
 			consumername=self._config.consumer_name,
 			streams={self._config.stream_name: ">"},
 			count=count,
-			block=self._config.block_ms,
+			block=None,
 		)
 		return _parse_messages(response)
 
