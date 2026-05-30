@@ -5,8 +5,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+from pathlib import Path
 from typing import Literal
 from uuid import uuid4
+
+# Resolve config directory relative to this file so it works on any deployment
+# Path: backend/app/api/v1/endpoints/pipeline.py → up 4 = backend/
+_CONFIG_DIR = Path(__file__).resolve().parents[4] / "config"
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import JSONResponse
@@ -26,7 +31,7 @@ router = APIRouter()
 
 class PipelineTriggerRequest(BaseModel):
 	trigger: Literal["cron", "ui"] = "cron"
-	bluesky_config_path: str = "config/bluesky.yaml"
+	bluesky_config_path: str = str(_CONFIG_DIR / "bluesky.yaml")
 	discovery_stream_name: str = "trendfinder:discovery"
 	async_run: bool = True
 
@@ -43,8 +48,8 @@ class PipelineTriggerResponse(BaseModel):
 
 class DiscoveryRunnerRequest(BaseModel):
 	discovery_stream_name: str = "trendfinder:discovery"
-	pre_check_config_path: str = "config/pre_check.yaml"
-	post_check_config_path: str = "config/post_check.yaml"
+	pre_check_config_path: str = str(_CONFIG_DIR / "pre_check.yaml")
+	post_check_config_path: str = str(_CONFIG_DIR / "post_check.yaml")
 	batch_size: int = 100
 	max_batches: int = 5
 	drain: bool = True
@@ -182,7 +187,7 @@ async def _run_discovery_pipeline(
 			
 			try:
 				result = genai_client.models.embed_content(
-					model="gemini-embedding-004",
+					model="models/text-embedding-004",
 					contents=texts,
 					config=genai_types.EmbedContentConfig(task_type="CLUSTERING"),
 				)
