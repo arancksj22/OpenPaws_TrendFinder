@@ -1,0 +1,24 @@
+# Regex patterns are case-insensitive.
+blocked_terms:
+  # Severely reduced list to allow more posts through during testing
+  - "casino"
+  - "onlyfans"
+  - "porn"
+  - "nsfw"
+  - "crypto"
+  - "bitcoin"
+  - "giveaway"
+  - "spam"
+  - "buy now"
+  - "discount"
+
+# Lowercase subreddit names without r/ prefix.
+blocked_subreddits:
+  - "politics"
+  - "wallstreetbets"
+  - "memes"
+  - "funny"
+  - "cryptocurrency"
+
+# Lowercase source names (e.g., reddit).
+blocked_sources: []

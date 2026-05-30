@@ -170,9 +170,8 @@ async def _run_discovery_pipeline(
 	discovery_stream_name: str,
 	task_id: str | None,
 ) -> dict[str, int]:
-	from google import genai
-	from google.genai import types as genai_types
-	genai_client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+	import google.generativeai as genai
+	genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 
 	try:
 		raw_posts = await ingest_bluesky_posts(bluesky_config_path)
@@ -186,12 +185,12 @@ async def _run_discovery_pipeline(
 			texts = [p.get("text", "") or " " for p in batch]
 			
 			try:
-				result = genai_client.models.embed_content(
+				result = genai.embed_content(
 					model="models/text-embedding-004",
-					contents=texts,
-					config=genai_types.EmbedContentConfig(task_type="CLUSTERING"),
+					content=texts,
+					task_type="CLUSTERING",
 				)
-				embeddings = [e.values for e in result.embeddings]
+				embeddings = result["embedding"]
 				for post, vector in zip(batch, embeddings):
 					if len(vector) < 1024:
 						vector = list(vector) + [0.0] * (1024 - len(vector))
